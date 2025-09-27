@@ -12,7 +12,7 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 
 **Automated Testing & Deployment:**
 - ✅ **Testnet**: Real blockchain integration with FT contract validation
-- ✅ **Sandbox**: Local performance testing (127 TPS achieved)
+- ✅ **Sandbox**: Local performance testing (123 TPS achieved)
 - ✅ **Security**: Input validation, account ID verification, overflow protection
 - ✅ **Performance**: 127 TPS benchmarked and validated (exceeds 100 TPS requirement)
 
@@ -171,7 +171,6 @@ artillery run benchmark.yml --output results.json
 # Generate report
 artillery report results.json --output report.html
 ```
-```
 
 This script automatically:
 - Starts NEAR sandbox
@@ -187,7 +186,11 @@ This script automatically:
 #### Prerequisites
 - Node.js 23+
 - NEAR account (for testnet) or local sandbox setup
+- Deployed NEP-141 FT contract ([near-examples/FT](https://github.com/near-examples/FT))
 - Git
+
+#### FT Contract Setup
+This API service requires a deployed NEP-141 FT contract to function. Use the [near-ft-helper](https://github.com/Psianturi/near-ft-helper) repository for automated contract deployment to sandbox or testnet environments.
 
 #### 1. Install Dependencies
 ```bash
@@ -554,11 +557,6 @@ node deploy-testnet.js  # Requires MASTER_ACCOUNT_PRIVATE_KEY in .env
 # 3. Configure service for testnet
 cp .env.example .env
 # Edit .env with your testnet account details
-# MASTER_ACCOUNT=your-account.testnet
-# MASTER_ACCOUNT_PRIVATE_KEY=ed25519:your-private-key
-# FT_CONTRACT=your-ft-contract.testnet
-
-# 4. Start service
 npm run start:testnet
 
 # 5. Run load testing
