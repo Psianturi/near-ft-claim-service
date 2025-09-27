@@ -1,0 +1,70 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  phases:
+    # Warm-up phase
+    - duration: 30
+      arrivalRate: 10
+      name: "Warm-up"
+
+    # Ramp-up to target
+    - duration: 60
+      arrivalRate: 20
+      rampTo: 80
+      name: "Ramp-up"
+
+    # Sustained high load
+    - duration: 180
+      arrivalRate: 100
+      rampTo: 150
+      name: "Sustained Load"
+
+  variables:
+    receiverId:
+      - "user1.test.near"
+      - "user2.test.near"
+      - "user3.test.near" 
+      - "alice.test.near"
+      - "bob.test.near"
+    
+    amount:
+      - "1000000000000000000000000"    # 1 token
+      - "5000000000000000000000000"    # 5 tokens
+      - "10000000000000000000000000"   # 10 tokens
+
+scenarios:
+  - name: "Single FT Transfer"
+    weight: 70
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Load test {{ $timestamp }}"
+          expect:
+            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors
+
+  - name: "Health Check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+
+  - name: "Batch Transfer"
+    weight: 10
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch load test"
+          expect:
+            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors

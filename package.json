@@ -1,0 +1,47 @@
+{
+  "name": "nearn",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 0",
+    "build": "tsc",
+    "start:testnet": "tsx src/index.ts",
+    "start:sandbox": "NEAR_ENV=sandbox tsx src/index.ts",
+    "start": "npm run start:testnet",
+    "run:worker:testnet": "tsx src/run-worker.ts",
+    "run:worker:sandbox": "NEAR_ENV=sandbox tsx src/run-worker.ts",
+    "benchmark": "./node_modules/.bin/ts-node src/benchmark.ts",
+    "test:sandbox": "tsx src/test-sandbox.ts",
+    "test:testnet": "tsx src/test-testnet.ts",
+    "sandbox": "near-sandbox"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/body-parser": "^1.19.6",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.1",
+    "@types/node-fetch": "^2.6.13",
+    "artillery": "^2.0.26",
+    "near-sandbox": "^0.2.0",
+    "near-workspaces": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@eclipseeer/near-api-ts": "^0.1.1",
+    "body-parser": "^2.2.0",
+    "bull": "^4.16.5",
+    "dotenv": "^16.0.0",
+    "express": "^5.1.0",
+    "near-api-js": "^6.3.0",
+    "node-fetch": "^2.7.0",
+    "p-retry": "^7.0.0",
+    "rate-limiter-flexible": "^7.3.2"
+  }
+}

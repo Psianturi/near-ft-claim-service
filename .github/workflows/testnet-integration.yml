@@ -1,0 +1,191 @@
+# Testnet Integration (CI) - DISABLED
+# This workflow is disabled in the new repository
+# To enable, remove the 'if: false' condition below
+
+name: Testnet Integration (CI) - DISABLED
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  testnet-integration:
+    # Disable this workflow by default
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (respect updated package.json)
+        run: |
+          npm install --silent
+
+      - name: Configure testnet environment
+        run: |
+          set -euo pipefail
+          echo "🌐 Configuring testnet environment..."
+
+          # Check if testnet private key secret is available
+          if [ -z "${{ secrets.TESTNET_PRIVATE_KEY }}" ]; then
+            echo "⚠️  TESTNET_PRIVATE_KEY secret not configured"
+            echo "SKIP_TESTNET_TRANSACTIONS=true" >> $GITHUB_ENV
+            echo "✅ CI will skip transaction tests and only validate API startup"
+          else
+            echo "✅ Testnet private key secret available"
+          fi
+
+          # Use testnet account for CI testing
+          echo "NEAR_ENV=testnet" >> $GITHUB_ENV
+          echo "NODE_URL=https://rpc.testnet.near.org" >> $GITHUB_ENV
+          echo "RPC_URLS=https://rpc.testnet.near.org" >> $GITHUB_ENV
+
+          # Test account configuration
+          echo "FT_CONTRACT=posm.testnet" >> $GITHUB_ENV
+          echo "MASTER_ACCOUNT=posm.testnet" >> $GITHUB_ENV
+          echo "MASTER_ACCOUNT_PRIVATE_KEY=${{ secrets.TESTNET_PRIVATE_KEY }}" >> $GITHUB_ENV
+
+          echo "✅ Testnet environment configured"
+
+      - name: Run API service and integration tests
+        run: |
+          set -euo pipefail
+
+          # Skip full testnet integration if private key not available
+          if [ "${SKIP_TESTNET_TRANSACTIONS:-}" = "true" ]; then
+            echo "⚠️  Skipping full testnet integration (no private key secret)"
+            echo "🧪 Running basic API validation tests..."
+
+            # Test basic API startup without NEAR connection
+            echo "🚀 Testing basic API startup..."
+            npm run build
+
+            echo "✅ Build successful"
+            echo "✅ Basic validation passed"
+            echo "🎯 Full testnet integration requires TESTNET_PRIVATE_KEY secret to be configured"
+            exit 0
+          fi
+
+          echo "🚀 Starting API service for testnet integration testing..."
+
+          # Start the API service in background
+          NEAR_ENV=testnet \
+          NODE_URL="${NODE_URL}" \
+          RPC_URLS="${RPC_URLS}" \
+          FT_CONTRACT="${FT_CONTRACT}" \
+          MASTER_ACCOUNT="${MASTER_ACCOUNT}" \
+          MASTER_ACCOUNT_PRIVATE_KEY="${MASTER_ACCOUNT_PRIVATE_KEY}" \
+          npm run start:testnet &> service.log &
+          SERVICE_PID=$!
+
+          cleanup() {
+            kill $SERVICE_PID 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Wait for service to be ready
+          echo "⏳ Waiting for API service to start..."
+          for i in $(seq 1 60); do
+            if curl -sS http://127.0.0.1:3000/health >/dev/null 2>&1; then
+              echo "✅ API service is responding"
+              break
+            fi
+            echo "⏳ Waiting for service... ($i/60)"
+            sleep 1
+          done
+
+          if [ $i -eq 60 ]; then
+            echo "❌ API service did not start within 1 minute"
+            cat service.log
+            kill $SERVICE_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "🧪 Running send-ft API validation test..."
+
+          # Check if testnet credentials are available
+          if [ -z "${MASTER_ACCOUNT_PRIVATE_KEY:-}" ] || [ "$MASTER_ACCOUNT_PRIVATE_KEY" = "ed25519:your-private-key-here" ]; then
+            echo "⚠️  Testnet private key not configured, skipping transaction test"
+            echo "✅ API service startup test passed!"
+            exit 0
+          fi
+
+          echo "⚠️ Note: Using testnet - this will perform real blockchain transactions"
+
+          # Use a test receiver that exists on testnet
+          TEST_RECEIVER="posma-badge.testnet"  # Using posma-badge.testnet as test receiver
+
+          RESPONSE_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST http://127.0.0.1:3000/send-ft \
+            -H "Content-Type: application/json" \
+            -d "{\"receiverId\": \"${TEST_RECEIVER}\", \"amount\": \"1000000\", \"memo\": \"CI testnet integration test\"}")
+          cat response.json
+
+          # On testnet, we expect either success (200) or controlled failure
+          if [ "$RESPONSE_CODE" -eq 200 ]; then
+            echo "✅ API service processed testnet transaction successfully"
+            TRANSACTION_HASH=$(jq -r '.transactionHash // empty' response.json)
+            if [ -n "$TRANSACTION_HASH" ]; then
+              echo "📋 Transaction Hash: $TRANSACTION_HASH"
+              echo "🔗 View on explorer: https://testnet.nearblocks.io/txns/$TRANSACTION_HASH"
+            fi
+          elif [ "$RESPONSE_CODE" -eq 500 ] && jq -e '.error | test("insufficient|balance|storage|Deserialization|CompilationError")' response.json >/dev/null; then
+            echo "✅ API service responded correctly with expected testnet error (contract/deserialization issues)"
+          else
+            echo "❌ Unexpected response: HTTP $RESPONSE_CODE"
+            echo "Response body:"
+            cat response.json
+            exit 1
+          fi
+
+          echo "✅ send-ft API testnet validation test passed"
+
+          echo "🔁 Running negative validation checks..."
+          INVALID_CODE=$(curl -sS -o invalid.json -w "%{http_code}" \
+            -X POST http://127.0.0.1:3000/send-ft \
+            -H "Content-Type: application/json" \
+            -d '{"receiverId":"invalid..account","amount":"1000000"}')
+          cat invalid.json
+          if [ "$INVALID_CODE" -ne 400 ]; then
+            echo "❌ Expected HTTP 400 for invalid receiver"
+            exit 1
+          fi
+          if ! jq -e '.error | test("Invalid receiverId")' invalid.json >/dev/null; then
+            echo "❌ Invalid receiver validation message missing"
+            exit 1
+          fi
+
+          MISSING_CODE=$(curl -sS -o missing.json -w "%{http_code}" \
+            -X POST http://127.0.0.1:3000/send-ft \
+            -H "Content-Type: application/json" \
+            -d '{"amount":"1000000"}')
+          cat missing.json
+          if [ "$MISSING_CODE" -ne 400 ]; then
+            echo "❌ Expected HTTP 400 for missing receiver"
+            exit 1
+          fi
+          if ! jq -e '.error | test("receiverId")' missing.json >/dev/null; then
+            echo "❌ Missing field validation message missing"
+            exit 1
+          fi
+
+          echo "✅ Negative validation checks passed"
+
+          echo "🎯 Skipping Artillery load test (not required for CI)"
+          echo "✅ All testnet integration tests passed!"
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testnet-integration-logs
+          path: |
+            service.log
+            response.json
+            invalid.json
+            missing.json

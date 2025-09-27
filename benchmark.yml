@@ -1,0 +1,49 @@
+config:
+  target: 'http://localhost:3000'
+  http:
+    timeout: 10000  # Reduced for faster processing
+    pool: 1000      # Connection pool size
+  phases:
+    # Warm-up phase - Start slow to test basic functionality
+    - duration: 10
+      arrivalRate: 10
+    # Ramp-up to 100 TPS - Gradual increase to test scaling
+    - duration: 20
+      arrivalRate: 30
+      rampTo: 100
+    # Sustained 100 TPS - Test stability at moderate load
+    - duration: 60
+      arrivalRate: 100
+    # Push to 200 TPS - Ramp up to near-target load
+    - duration: 60
+      arrivalRate: 200
+
+
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+
+environments:
+  sandbox:
+    target: 'http://localhost:3000'
+    http:
+      timeout: 10000
+      pool: 1000
+    phases:
+      # Sandbox testing - Lower load due to known limitations
+      - duration: 10
+        arrivalRate: 5
+      - duration: 20
+        arrivalRate: 10
+        rampTo: 50
+      - duration: 30
+        arrivalRate: 50
+scenarios:
+   - name: 'Send FT'
+     flow:
+       - post:
+           url: '/send-ft'
+           json:
+             receiverId: '{{ receiverId }}'  # Use environment variable or default
+             amount: '1000000'  # Small amount for testing
+             memo: 'Artillery Load Test'
