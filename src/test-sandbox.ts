@@ -20,6 +20,18 @@ async function testAPIService() {
   console.log(`   Master: ${masterAccount.accountId}`);
   console.log(`   User: ${userAccount.accountId}\n`);
 
+  const sandboxRpcUrl =
+    ((worker.provider as any)?.connection?.url as string | undefined) ||
+    process.env.NEAR_WORKSPACES_RPC ||
+    'http://127.0.0.1:3030';
+  console.log(`🔌 Sandbox RPC URL: ${sandboxRpcUrl}`);
+
+  const masterKeyPair = await masterAccount.getKey();
+  if (!masterKeyPair) {
+    throw new Error('Failed to load sandbox master account key pair');
+  }
+  const masterPrivateKey = masterKeyPair.toString();
+
   // 3. Deploy FT Contract
     // Prefer local copy first, then fall back to freshly compiled artifact
     const localWasmPath = path.join(process.cwd(), 'fungible_token.wasm');
@@ -77,9 +89,13 @@ async function testAPIService() {
     env: {
       ...process.env,
       NEAR_ENV: 'sandbox',
-      RPC_URLS: 'http://localhost:27733', // Use the new sandbox port
-      MASTER_ACCOUNT_PRIVATE_KEY: 'ed25519:4GvwDSCWMnP2GTX8SD2CAsn7TDAczjGEASGePCs7Nec4JpHUsHFR1rEhFf9vy5H4rBKUfE7sfDnNK8PRVD59HmE6',
-      SKIP_STORAGE_CHECK: 'true'
+      NODE_URL: sandboxRpcUrl,
+      RPC_URLS: sandboxRpcUrl,
+      MASTER_ACCOUNT: masterAccount.accountId,
+  MASTER_ACCOUNT_PRIVATE_KEY: masterPrivateKey,
+      FT_CONTRACT: ftContractAccount.accountId,
+      SKIP_STORAGE_CHECK: 'false',
+      WAIT_UNTIL: 'Final'
     }
   });
 
@@ -87,6 +103,7 @@ async function testAPIService() {
   await new Promise((resolve, reject) => {
     let output = '';
     let stderrOutput = '';
+    let started = false;
     const timeout = setTimeout(() => {
       console.log('❌ API service startup timeout');
       console.log('API stdout:', output);
@@ -97,9 +114,17 @@ async function testAPIService() {
     apiProcess.stdout?.on('data', (data) => {
       output += data.toString();
       console.log('API stdout:', data.toString().trim());
-      if (output.includes('Server is running on http://localhost:3000')) {
+      if (started) {
+        return;
+      }
+      const normalized = output.toLowerCase();
+      if (
+        normalized.includes('server ready to accept requests') ||
+        normalized.includes('near connection initialized successfully')
+      ) {
         console.log('✅ API service started');
         clearTimeout(timeout);
+        started = true;
         resolve(true);
       }
     });

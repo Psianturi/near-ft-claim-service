@@ -550,29 +550,68 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       }
     }
 
-    // 3) Build actions array for the batch transaction
-    const actions: any[] = [];
+    // 3) Build storage deposit + transfer actions
+    const depositsRequired = !skipStorageCheck
+      ? uniqueReceivers.filter((receiverId) => !storageChecks[receiverId])
+      : [];
 
-    // TEMPORARY: Skip storage deposits for testing - focus on ft_transfer only
-  requestLog.debug({ skipStorageCheck, storageChecks }, 'Storage registration summary');
+    const storageDepositAmount = (() => {
+      if (bounds && typeof bounds === 'object') {
+        if (typeof bounds.min === 'string') return bounds.min;
+        if (typeof bounds.min === 'number') return String(bounds.min);
+        if (typeof bounds.min === 'bigint') return bounds.min.toString();
+      }
+      if (process.env.STORAGE_MIN_DEPOSIT) {
+        return process.env.STORAGE_MIN_DEPOSIT;
+      }
+      return '1250000000000000000000';
+    })();
 
-    // Add all ft_transfer actions (skip storage deposits for now)
-    for (const transfer of transferList) {
-      actions.push(
-        functionCall({
-          fnName: 'ft_transfer',
-          fnArgsJson: {
-            receiver_id: transfer.receiverId,
-            amount: transfer.amount,
-            memo: transfer.memo || '',
-          },
-          gasLimit: teraGas('30'),
-          attachedDeposit: { yoctoNear: '1' },
-        })
-      );
-    }
+    requestLog.debug(
+      {
+        skipStorageCheck,
+        storageChecks,
+        depositsRequired,
+        storageDepositAmount,
+      },
+      'Storage registration summary',
+    );
 
-  requestLog.debug({ actionCount: actions.length }, 'Prepared NEAR actions');
+    const transferActions: any[] = transferList.map((transfer) =>
+      functionCall({
+        fnName: 'ft_transfer',
+        fnArgsJson: {
+          receiver_id: transfer.receiverId,
+          amount: transfer.amount,
+          memo: transfer.memo || '',
+        },
+        gasLimit: teraGas('30'),
+        attachedDeposit: { yoctoNear: '1' },
+      }),
+    );
+
+    const storageDepositActions: any[] = depositsRequired.map((receiverId) =>
+      functionCall({
+        fnName: 'storage_deposit',
+        fnArgsJson: {
+          account_id: receiverId,
+          registration_only: true,
+        },
+        gasLimit: teraGas('30'),
+        attachedDeposit: { yoctoNear: storageDepositAmount },
+      }),
+    );
+
+    const actions: any[] = [...storageDepositActions, ...transferActions];
+
+    requestLog.debug(
+      {
+        depositCount: storageDepositActions.length,
+        transferCount: transferActions.length,
+        actionCount: actions.length,
+      },
+      'Prepared NEAR actions',
+    );
 
     // 4) Execute batch transaction
     let result: any;
@@ -581,8 +620,23 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       // Using near-api-js (sandbox RPC) - execute actions using functionCall
       const results = [];
 
+      for (const receiverId of depositsRequired) {
+        requestLog.debug({ contractId: config.ftContract, receiverId }, 'Invoking storage_deposit via sandbox account');
+        const depositResult = await account.functionCall({
+          contractId: config.ftContract,
+          methodName: 'storage_deposit',
+          args: {
+            account_id: receiverId,
+            registration_only: true,
+          },
+          gas: '30000000000000',
+          attachedDeposit: storageDepositAmount,
+        });
+        results.push(depositResult);
+      }
+
       for (const transfer of transferList) {
-  requestLog.debug({ contractId: config.ftContract }, 'Invoking ft_transfer via sandbox account');
+        requestLog.debug({ contractId: config.ftContract }, 'Invoking ft_transfer via sandbox account');
         const actionResult = await account.functionCall({
           contractId: config.ftContract,
           methodName: 'ft_transfer',
@@ -612,7 +666,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
           | 'ExecutedOptimistic'
           | 'IncludedFinal'
           | 'Executed'
-          | 'Final') || 'Included';
+          | 'Final') || 'Final';
 
       result = await client.sendSignedTransaction({
         signedTransaction: tx,

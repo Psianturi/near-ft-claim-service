@@ -1,11 +1,11 @@
 import fetch from 'node-fetch';
-import { setTimeout } from 'timers/promises';
+import { pathToFileURL } from 'url';
 
 const API_URL = 'http://localhost:3000/send-ft';
 const TOTAL_REQUESTS = 60000;
 const CONCURRENCY = 100;
 
-const sendRequest = async (i: number): Promise<boolean> => {
+export const sendRequest = async (i: number): Promise<boolean> => {
     const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -25,7 +25,7 @@ const sendRequest = async (i: number): Promise<boolean> => {
     return response.ok;
 };
 
-const runBenchmark = async (): Promise<void> => {
+export const runBenchmark = async (): Promise<void> => {
     console.log(`Starting benchmark with ${TOTAL_REQUESTS} requests and concurrency ${CONCURRENCY}...`);
     const startTime = Date.now();
     let successfulRequests = 0;
@@ -55,4 +55,23 @@ const runBenchmark = async (): Promise<void> => {
     console.log('-------------------------\n');
 };
 
-runBenchmark().catch(console.error);
+const getInvokedScriptUrl = (): string | undefined => {
+    if (!process.argv[1]) {
+        return undefined;
+    }
+    try {
+        return pathToFileURL(process.argv[1]).href;
+    } catch (error) {
+        console.warn('Unable to resolve invoked script URL', error);
+        return undefined;
+    }
+};
+
+const isDirectExecution = getInvokedScriptUrl() === import.meta.url;
+
+if (isDirectExecution) {
+    runBenchmark().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}

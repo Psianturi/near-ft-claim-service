@@ -23,8 +23,6 @@ config:
       rampTo: 200
       name: "Stress Test"
 
-  processor: "./src/benchmark.ts"
-  
   variables:
     receiverId:
       - "user1.test.near"

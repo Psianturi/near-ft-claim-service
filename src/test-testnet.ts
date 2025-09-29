@@ -1,20 +1,150 @@
+import './polyfills.js';
 import { spawn } from 'child_process';
+import { config } from './config.js';
+import { initNear, getNear } from './near.js';
+import { Buffer } from 'node:buffer';
+
+type TestnetNear = {
+  signer: {
+    signTransaction: (args: any) => Promise<any>;
+  };
+  client: {
+    callContractReadFunction: (args: any) => Promise<any>;
+    sendSignedTransaction: (args: any) => Promise<any>;
+  };
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const decodeJson = ({ rawResult }: { rawResult: number[] }) => {
+  try {
+    const text = new TextDecoder().decode(Uint8Array.from(rawResult));
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const getTestnetNear = (): TestnetNear => {
+  const near = getNear() as any;
+  if (!near?.signer || !near?.client) {
+    throw new Error('Testnet signer/client not initialized. Check NEAR credentials.');
+  }
+  return near as TestnetNear;
+};
+
+
+const coerceToBigInt = (value: any): bigint => {
+  if (value == null) {
+    return 0n;
+  }
+  if (typeof value === 'bigint') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return BigInt(value);
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/"/g, '').trim();
+    if (!cleaned) {
+      return 0n;
+    }
+    return BigInt(cleaned);
+  }
+  if (typeof value === 'object') {
+    if ('total' in value) {
+      return coerceToBigInt((value as Record<string, unknown>).total);
+    }
+    if ('available' in value) {
+      return coerceToBigInt((value as Record<string, unknown>).available);
+    }
+    if (Array.isArray(value) && value.length > 0) {
+      return coerceToBigInt(value[0]);
+    }
+  }
+  return 0n;
+};
+
+const rpcCall = async <T>(method: string, params: any): Promise<T> => {
+  const response = await fetch(config.nodeUrl || 'https://rpc.testnet.near.org', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'integration-test', method, params }),
+  });
+
+  const payload = await response.json();
+  if (payload.error) {
+    throw new Error(`RPC error: ${JSON.stringify(payload.error)}`);
+  }
+  return payload.result as T;
+};
+
+const fetchFtBalance = async (accountId: string): Promise<bigint> => {
+  const result = await rpcCall<any>('query', {
+    request_type: 'call_function',
+    account_id: config.ftContract,
+    method_name: 'ft_balance_of',
+    args_base64: Buffer.from(JSON.stringify({ account_id: accountId })).toString('base64'),
+    finality: 'final',
+  });
+
+  const decoded = Buffer.from(result.result).toString();
+  try {
+    return coerceToBigInt(JSON.parse(decoded));
+  } catch {
+    return coerceToBigInt(decoded);
+  }
+};
+
+const waitForBalanceIncrease = async (
+  accountId: string,
+  previous: bigint,
+  expectedIncrease: bigint,
+): Promise<bigint> => {
+  const maxAttempts = 10;
+  const target = previous + expectedIncrease;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  const current = await fetchFtBalance(accountId);
+    if (current >= target) {
+      return current;
+    }
+
+    console.log(`   ⏳ Waiting for balance update (attempt ${attempt}/${maxAttempts})...`);
+    await sleep(3000);
+  }
+
+  throw new Error('Balance did not reflect transfer within expected time');
+};
 
 async function testTestnetService() {
   console.log('🌐 Testing API Service on NEAR Testnet...\n');
 
-  // Start API service in testnet mode
+  const receiverId = (process.env.TEST_RECEIVER_ID || 'psianturi.testnet').trim();
+  if (!receiverId) {
+    throw new Error('TEST_RECEIVER_ID environment variable is required');
+  }
+  if (receiverId === config.masterAccount) {
+    throw new Error('TEST_RECEIVER_ID must be different from MASTER_ACCOUNT to avoid self-transfers');
+  }
+
+  const transferAmountRaw = (process.env.TEST_TRANSFER_AMOUNT || '1000000000000000').trim();
+  if (!/^[0-9]+$/.test(transferAmountRaw)) {
+    throw new Error('TEST_TRANSFER_AMOUNT must be a positive integer string');
+  }
+  const transferAmount = BigInt(transferAmountRaw);
+
   console.log('🚀 Starting API service in testnet mode...');
   const apiProcess = spawn('npm', ['run', 'start:testnet'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       NEAR_ENV: 'testnet',
-      WORKER_COUNT: '6',
-      CONCURRENCY_LIMIT: '200',
-      QUEUE_SIZE: '1000',
-      SKIP_STORAGE_CHECK: 'true'
-    }
+      WORKER_COUNT: process.env.WORKER_COUNT || '6',
+      CONCURRENCY_LIMIT: process.env.CONCURRENCY_LIMIT || '200',
+      QUEUE_SIZE: process.env.QUEUE_SIZE || '1000',
+      SKIP_STORAGE_CHECK: 'false',
+    },
   });
 
   let serviceReady = false;
@@ -22,7 +152,11 @@ async function testTestnetService() {
     apiProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       console.log('API Output:', output.trim());
-      if (output.includes('Server is running on http://localhost:3000')) {
+      const normalized = output.toLowerCase();
+      if (
+        normalized.includes('server ready to accept requests') ||
+        normalized.includes('near connection initialized successfully')
+      ) {
         serviceReady = true;
         console.log('✅ API service started successfully');
         resolve();
@@ -34,94 +168,115 @@ async function testTestnetService() {
     console.log('API Error:', data.toString().trim());
   });
 
-  // Wait for service to start or timeout
   await Promise.race([
     readyPromise,
     new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Service startup timeout')), 30000)
-    )
+      setTimeout(() => reject(new Error('Service startup timeout')), 45000),
+    ),
   ]);
 
   if (!serviceReady) {
     console.log('❌ Service failed to start');
-    apiProcess.kill();
+    apiProcess.kill('SIGINT');
     process.exit(1);
   }
 
-  // Test API endpoints (these will fail due to missing private key, but demonstrate the service works)
-  console.log('\n🧪 Testing API endpoints on testnet...');
+  console.log('\n🧪 Preparing NEAR context...');
+  await initNear();
+  const near = getTestnetNear();
 
-  const testEndpoint = async (description: string, expectFailure = true) => {
-    try {
-      console.log(`   Testing: ${description}`);
-      const response = await fetch('http://localhost:3000/send-ft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receiverId: 'test.near',
-          amount: '1000000',
-          memo: `Testnet test: ${description}`
-        })
-      });
+  console.log(`   Master account: ${config.masterAccount}`);
+  console.log(`   FT contract: ${config.ftContract}`);
+  console.log(`   Test receiver: ${receiverId}`);
+  console.log(`   Transfer amount: ${transferAmount} yocto`);
+  const startingBalance = await fetchFtBalance(receiverId);
+  console.log(`   📊 Starting receiver balance: ${startingBalance.toString()} yocto`);
 
-      const result = await response.json();
-      console.log(`   Response: ${response.status} ${response.statusText}`);
+  const testResults: Array<{ name: string; passed: boolean; details?: string }> = [];
 
-      if (expectFailure && response.status !== 200) {
-        console.log(`   ✅ Expected failure (no private key): ${result.error || 'Authentication error'}`);
-        return true;
-      } else if (!expectFailure && response.status === 200) {
-        console.log(`   ✅ Unexpected success: ${JSON.stringify(result)}`);
-        return true;
-      } else {
-        console.log(`   ❌ Unexpected result: ${JSON.stringify(result)}`);
-        return false;
-      }
-    } catch (error) {
-      console.log(`   ❌ Network error: ${error}`);
-      return false;
-    }
-  };
-
-  // Run tests
-  const results = [];
-  results.push(await testEndpoint('Basic transfer request'));
-  results.push(await testEndpoint('Another transfer request'));
-
-  // Test health endpoint
   try {
-    const healthResponse = await fetch('http://localhost:3000/');
-    console.log(`   Health check: ${healthResponse.status} - ${healthResponse.status === 200 ? '✅' : '❌'}`);
-    results.push(healthResponse.status === 200);
-  } catch (error) {
-    console.log(`   Health check failed: ${error}`);
-    results.push(false);
+    console.log('\n🚀 Sending transfer request to /send-ft...');
+    const response = await fetch('http://localhost:3000/send-ft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        receiverId,
+        amount: transferAmount.toString(),
+        memo: 'Testnet integration test transfer',
+      }),
+    });
+
+    const body = await response.json().catch(() => ({}));
+    console.log(`   Response: ${response.status} ${response.statusText}`);
+
+    if (response.status !== 200) {
+      console.log('   ❌ Transfer request failed', body);
+      testResults.push({ name: 'Transfer request', passed: false, details: body?.error });
+    } else {
+      console.log('   ✅ Transfer request accepted');
+      testResults.push({ name: 'Transfer request', passed: true });
+
+      try {
+  const finalBalance = await waitForBalanceIncrease(receiverId, startingBalance, transferAmount);
+        const delta = finalBalance - startingBalance;
+        console.log(`   ✅ Receiver balance increased by ${delta.toString()} yocto`);
+        testResults.push({ name: 'On-chain balance verification', passed: true });
+      } catch (error: any) {
+        console.log('   ❌ Balance verification failed:', error?.message || error);
+        testResults.push({
+          name: 'On-chain balance verification',
+          passed: false,
+          details: error?.message || String(error),
+        });
+      }
+    }
+  } catch (error: any) {
+    console.log('   ❌ Unexpected error during transfer:', error?.message || error);
+    testResults.push({
+      name: 'Transfer request',
+      passed: false,
+      details: error?.message || String(error),
+    });
   }
 
-  // Cleanup
-  console.log('\n🧹 Cleaning up...');
-  apiProcess.kill();
+  try {
+    const healthResponse = await fetch('http://localhost:3000/health');
+    const healthy = healthResponse.status === 200;
+    console.log(`\n🩺 Health check: ${healthResponse.status} ${healthy ? '✅' : '❌'}`);
+    testResults.push({ name: 'Health endpoint', passed: healthy });
+  } catch (error: any) {
+    console.log(`\n🩺 Health check failed: ${error?.message || error}`);
+    testResults.push({
+      name: 'Health endpoint',
+      passed: false,
+      details: error?.message || String(error),
+    });
+  }
 
-  // Summary
-  const passedTests = results.filter(r => r).length;
-  const totalTests = results.length;
+  console.log('\n🧹 Cleaning up...');
+  apiProcess.kill('SIGINT');
+
+  const passedTests = testResults.filter((r) => r.passed).length;
+  const totalTests = testResults.length;
 
   console.log('\n📊 Testnet Integration Test Results:');
-  console.log(`   Tests passed: ${passedTests}/${totalTests}`);
-  console.log(`   Service startup: ✅`);
-  console.log(`   API endpoints responding: ✅`);
-  console.log(`   Testnet connectivity: ✅`);
-  console.log(`   Authentication handling: ✅ (expected failures due to missing keys)`);
+  for (const result of testResults) {
+    console.log(`   ${result.passed ? '✅' : '❌'} ${result.name}${result.details ? ` - ${result.details}` : ''}`);
+  }
+  console.log(`\n   Summary: ${passedTests}/${totalTests} checks passed`);
 
-  if (passedTests === totalTests) {
-    console.log('\n🎉 Testnet integration test PASSED!');
-    console.log('   The API service successfully integrates with NEAR testnet infrastructure.');
-    console.log('   Authentication failures are expected without proper private keys.');
-    process.exit(0);
-  } else {
-    console.log('\n❌ Some tests failed.');
+  const allPassed = passedTests === totalTests;
+  if (!allPassed) {
+    console.log('\n❌ Some testnet integration checks failed.');
     process.exit(1);
   }
+
+  console.log('\n🎉 Testnet integration test PASSED!');
+  console.log('   /send-ft endpoint is operational and confirmed on-chain.');
+  process.exit(0);
 }
 
-testTestnetService().catch(console.error);
+testTestnetService().catch((error) => {
+  console.error('Fatal error during test execution:', error);
+  process.exit(1);
+});

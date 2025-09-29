@@ -45,7 +45,45 @@ async function main() {
   });
 
   // Get account handle
-  const account = await near.account(signerAccountId);
+  const masterAccount = await near.account(signerAccountId);
+
+  // Ensure contract account exists and has a key we can use
+  let contractAccount;
+  if (contractAccountId === signerAccountId) {
+    contractAccount = masterAccount;
+  } else {
+    const provider = near.connection.provider;
+    let contractExists = true;
+    try {
+      await provider.query({
+        request_type: 'view_account',
+        finality: 'final',
+        account_id: contractAccountId,
+      });
+    } catch (error) {
+      contractExists = false;
+      console.log(`🏗️ Contract account ${contractAccountId} missing, creating as subaccount...`);
+    }
+
+    if (!contractExists) {
+      if (!contractAccountId.endsWith(`.${signerAccountId}`)) {
+        throw new Error(
+          `Cannot auto-create ${contractAccountId}. Provide an existing account or ensure it is a subaccount of ${signerAccountId}.`,
+        );
+      }
+
+      const contractKeyPair = utils.KeyPair.fromRandom('ed25519');
+      await keyStore.setKey('sandbox', contractAccountId, contractKeyPair);
+      await masterAccount.createAccount(
+        contractAccountId,
+        contractKeyPair.getPublicKey(),
+        utils.format.parseNearAmount('10'),
+      );
+      console.log(`✅ Created contract account ${contractAccountId} with 10 NEAR funding`);
+    }
+
+    contractAccount = await near.account(contractAccountId);
+  }
 
   // Read WASM file
   const wasm = fs.readFileSync(wasmPath);
@@ -54,12 +92,12 @@ async function main() {
   try {
     // Deploy contract using simplified approach
     console.log('🔨 Deploying contract...');
-    await account.deployContract(wasm);
+    await contractAccount.deployContract(wasm);
     console.log('✅ Contract deployed successfully!');
 
     // Initialize contract with minimal parameters (like near-ft-claiming-service)
     console.log('⚙️ Initializing contract...');
-    await account.functionCall({
+    await contractAccount.functionCall({
       contractId: contractAccountId,
       methodName: 'new_default_meta',
       args: {

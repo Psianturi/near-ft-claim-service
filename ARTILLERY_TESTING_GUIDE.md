@@ -74,6 +74,8 @@ phases:
 
 ## 📈 Expected Performance
 
+> ⚠️ The 200+ TPS targets below were aspirational. The latest sandbox run on 2025-09-29 timed out under the default profile—tune arrival rates downward (≈40–60 rps peak) before attempting stress phases. See [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md) for details.
+
 ### Sandbox (Local):
 - **Target TPS**: 200+
 - **Response Time**: <500ms avg

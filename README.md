@@ -28,12 +28,13 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 - **Connection Pool Optimization**: 50,000 max connections with keep-alive agents
 - **Comprehensive Load Testing**: Validated with Artillery (19,400+ requests processed)
 
-## 2025-09-29 Updates & Lifecycle
+## Updates & Lifecycle
 
 ### 🔄 Recent changes
 - Adopted **Pino** structured logging (`src/logger.ts`) with pretty output locally and JSON-friendly fields for ingestion.
 - Default runtime aligned with **Node.js 24** to support Artillery’s undici `File` implementation during benchmarks.
 - New Artillery artefacts: `artillery-results-testnet-20250929-070536.json` & `artillery-report-testnet-20250929-070536.html` (87 req/s average, 23.6k requests).
+- **2025-09-29**: Sandbox benchmark re-run after redeploying `ft.test.near`; results captured in `artillery-results-sandbox-20250929-123051.json` / `.html` with high timeout rates—see [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md).
 
 ### 📈 Observed during latest testnet run
 - ~90% of HTTP 500 responses map to on-chain panics: `Smart contract panicked: The account <receiver> is not registered`. Register recipients or enable `storage_deposit` before issuing transfers to avoid this.
@@ -48,6 +49,8 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 ## Performance
 
 ### ⚡ **Latest Benchmark Results (2025-09-28)**
+
+> ⚠️ These figures refer to the prior testnet-focused benchmark. The newest sandbox run (2025-09-29) exposed significant timeouts under the same load profile—see the updated sandbox section below for the current state.
 
 **Peak Performance Demonstrated:**
 - **Average Throughput**: **127 TPS** achieved (exceeds 100 TPS requirement by 27%)
@@ -75,40 +78,26 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 - **Architecture**: Queue-based system with 5 concurrent workers
 - **RPC Provider**: NEAR testnet with FastNEAR integration
 
-### Sandbox Results Analysis
+### Sandbox Benchmark (2025-09-29)
 
-#### ✅ **What's Working Well**:
-1. **API Service Startup**: Service initializes correctly in sandbox environment
-2. **Request Validation**: Input sanitization working properly for all endpoints
-3. **Security Checks**: Invalid receiver ID properly rejected with HTTP 400
-4. **Error Handling**: Meaningful error responses returned consistently
-5. **Concurrent Handling**: Multiple requests processed simultaneously without blocking
-6. **Load Testing**: Artillery successfully processed 19,445 requests
-7. **Performance**: Achieved 127 TPS average, 200 TPS peak under load
+**Run summary**
+- Completed requests: **172** (HTTP 200: 139 / HTTP 500: 33)
+- Scenarios attempted: **24,563** with only **147** completing (≈0.60%)
+- Transport errors: **23,455** timeouts (`ETIMEDOUT`) and **936** connection resets (`ECONNRESET`)
+- Latency profile: median **3.03 s**, p95 **9.74 s**, max **9.98 s**
+- Artifacts: `artillery-results-sandbox-20250929-123051.json` & `artillery-report-sandbox-20250929-123051.html`
 
-#### 📊 **Sandbox Performance Metrics**:
-- **Average TPS**: 123/sec (exceeds 100 TPS requirement by 23%)
-- **Peak TPS**: 200/sec sustained during testing
-- **Total Requests**: 19,445 processed successfully
-- **Test Duration**: 2 minutes, 35 seconds
-- **Success Rate**: 100% (all requests processed without failures)
-- **HTTP Response Codes**: All 400 (expected - proper validation)
-- **Error Rate**: 0% (no failures or timeouts)
+**What we learned**
+1. **Load profile overwhelms the sandbox** – The 5→200 rps phases saturate the queue, so >99% of scenarios time out before completion.
+2. **HTTP 500s mix contract panics and back-pressure** – Inspect worker logs to separate NEAR execution errors from queue rejections; keep receivers pre-registered to avoid storage panics.
+3. **Latency balloons under stress** – With tails near 10 s, requests are waiting in the concurrency queue; add queue depth metrics for the next run.
 
-#### ⚠️ **Current Limitations**:
-1. **Contract Deployment**: NEAR 2.6.5 vs SDK 5.x compatibility issues prevent actual transfers
-2. **WASM Deserialization**: "Error happened while deserializing the module" when contract deployed
-3. **Schema Compatibility**: PublicKey serialization mismatches between runtime versions
-4. **ES Module Compatibility**: Global state conflicts in testing environment
+**Next actions**
+- Retune `benchmark-sandbox.yml` to ramp through moderate peaks (≈40–60 rps) before attempting higher loads.
+- Capture structured logs (`server.log`, `api.log`) during the run to categorise the 500 responses.
+- Review [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md) for the full breakdown and recommended remediation steps.
 
-#### 🔧 **Technical Challenges**:
-- **NEAR Runtime Version**: Sandbox uses 2.6.5, contract compiled with SDK 5.x
-- **Borsh Serialization**: Schema mismatches between runtime versions
-- **ES Module Compatibility**: Global state conflicts in testing environment
-
-**Note**: While sandbox has performance limitations due to compatibility issues, it successfully validates API functionality, request handling, and load testing infrastructure. For production performance testing, use testnet environment.
-
-See [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md) for complete testnet benchmark analysis.
+See [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md) for the latest testnet benchmark analysis.
 
 ## Project Structure
 
@@ -388,6 +377,19 @@ artillery report results.json --output report.html
 ```
 
 ## Testing
+
+### 🌐 Integration Test Summary
+
+| Environment | Command | Latest Result | Key Fixes & Notes |
+|-------------|---------|---------------|-------------------|
+| **Testnet** | `npm run test:testnet` | ✅ `src/test-testnet.ts` boots the API, performs a `/send-ft` transfer, waits for final NEAR RPC confirmation, and verifies the balance increase on-chain. | • Added automatic NEP-145 storage deposits when the receiver is missing.<br>• Forced `WAIT_UNTIL=Final` to avoid optimistic RPC reads.<br>• Switched balance polling to raw RPC queries to dodge cached client state. |
+| **Sandbox** | `npm run test:sandbox` | ✅ near-workspaces spins up a fresh chain, deploys `fungible_token.wasm`, runs three `/send-ft` calls, and confirms the on-chain balance delta (3/3 success). | • Replaced hard-coded `127.0.0.1:3030` with the dynamic RPC URL emitted by near-workspaces.<br>• Injected the sandbox master key from the freshly created account.<br>• Re-enabled storage checks so the worker issues deposits when needed.<br>• Updated log matching so the test recognises “Server ready to accept requests”. |
+
+**Outputs:**
+- Testnet run (2025-09-29 04:45 UTC) increased the receiver balance by the requested transfer amount and exited with `0` after the health check.
+- Sandbox run (2025-09-29 04:54 UTC) transferred `4.5e6` yocto tokens cumulatively, leaving the user account at `4,500,000` yocto and the master at `999999999999999995500000` yocto.
+
+Refer to the console logs in `npm run test:testnet` and `npm run test:sandbox` for the full transaction receipts, including storage deposit diagnostics and action breakdowns.
 
 ### Automated Testing
 
