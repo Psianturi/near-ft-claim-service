@@ -1,17 +1,6 @@
 // 1. Import and run polyfills FIRST - before ANY other imports
 import './polyfills.js';
 
-// Prevent server crash on unexpected library exceptions/rejections
-process.on('uncaughtException', (err: any, origin: any) => {
-  console.error(`🚨 Caught exception: ${err}\n` + `Exception origin: ${origin}`);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason: any, promise: any) => {
-  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
- 
-});
-
 // 2. Import other modules (config.ts will load dotenv)
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
@@ -19,12 +8,23 @@ import https from 'https';
 import http from 'http';
 import { initNear, getNear, cleanupNear } from './near.js';
 import { config } from './config.js';
-import { functionCall, teraGas, yoctoNear } from '@eclipseeer/near-api-ts';
-import { providers } from 'near-api-js';
+import { functionCall, teraGas } from '@eclipseeer/near-api-ts';
 import { safeView } from './near-utils.js';
+import { createLogger } from './logger.js';
 
-console.log('🔧 Final Config Loaded:');
-console.log(JSON.stringify(config, null, 2));
+const log = createLogger({ module: 'server' });
+const metricsLog = log.child({ component: 'metrics' });
+const requestLog = log.child({ component: 'transfer' });
+
+process.on('uncaughtException', (err: any, origin: any) => {
+  log.fatal({ err, origin }, 'Uncaught exception, terminating process');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  log.error({ reason }, 'Unhandled promise rejection');
+});
+log.info({ config }, 'Final configuration loaded');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -36,7 +36,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Configure server for high performance
 const server = app.listen(port, () => {
-  console.log(`🚀 Server is running on http://localhost:${port}`);
+  log.info({ port }, 'HTTP server listening');
 });
 
 // Configure server for maximum performance (600+ TPS) - inspired by Rust implementation
@@ -83,10 +83,11 @@ const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || '4', 10); // Testing w
 const MAX_IN_FLIGHT = parseInt(process.env.MAX_IN_FLIGHT || '200', 10); // Like Rust MAX_IN_FLIGHT
 
 class ConcurrencyManager {
+  constructor(private readonly log = createLogger({ module: 'server', component: 'concurrency' })) {}
+
   private active = 0;
   private queue: Array<{ resolve: () => void; reject: (error: Error) => void; timeout: NodeJS.Timeout; task?: any }> = [];
   private stats = { processed: 0, queued: 0, rejected: 0, avgWaitTime: 0 };
-  private workers: Worker[] = [];
   private batchQueue: any[] = [];
   private batchTimeout: NodeJS.Timeout | null = null;
 
@@ -176,8 +177,8 @@ class ConcurrencyManager {
 
     if (this.batchQueue.length === 0) return;
 
-    const batch = this.batchQueue.splice(0);
-    console.log(`🔄 Processing batch of ${batch.length} requests with semaphore control`);
+  const batch = this.batchQueue.splice(0);
+  this.log.debug({ batchSize: batch.length }, 'Processing request batch');
 
     // Process batch with semaphore control like Rust implementation
     const promises = batch.map(async (task) => {
@@ -195,8 +196,7 @@ class ConcurrencyManager {
   // Multiple worker support for parallel processing
   initializeWorkers() {
     for (let i = 0; i < WORKER_COUNT; i++) {
-    
-      console.log(`👷 Worker ${i + 1} initialized`);
+      this.log.debug({ worker: i + 1 }, 'Worker initialized');
     }
   }
 
@@ -212,7 +212,7 @@ class ConcurrencyManager {
 
   logStats() {
     const stats = this.getStats();
-    console.log(`📊 Concurrency Stats: Active=${stats.active}, Queue=${stats.queueLength}, BatchQueue=${stats.batchQueueLength}, Processed=${stats.processed}, Rejected=${stats.rejected}, Workers=${stats.workers}`);
+    this.log.info({ stats }, 'Concurrency statistics');
   }
 }
 
@@ -239,10 +239,13 @@ setInterval(() => {
   concurrencyManager.logStats();
 
   const now = Date.now();
-  const timeDiff = (now - lastTpsCheck) / 1000; 
-  const currentTps = Math.round(requestCount / timeDiff);
+  const timeDiff = (now - lastTpsCheck) / 1000;
+  const currentTps = timeDiff > 0 ? Number((requestCount / timeDiff).toFixed(2)) : 0;
 
-  console.log(`🚀 Current TPS: ${currentTps} (over ${timeDiff}s)`);
+  metricsLog.info({
+    currentTps,
+    windowSeconds: Number(timeDiff.toFixed(2)),
+  }, 'Throughput update');
 
   requestCount = 0;
   lastTpsCheck = now;
@@ -252,11 +255,15 @@ setInterval(() => {
 if (process.env.ENABLE_MEMORY_MONITORING === 'true') {
   setInterval(() => {
     const memUsage = process.memoryUsage();
-    console.log(`🧠 Memory: RSS=${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memUsage.heapUsed / 1024 / 1024)}MB/${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+    metricsLog.debug({
+      rssMb: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsedMb: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(memUsage.heapTotal / 1024 / 1024),
+    }, 'Memory usage snapshot');
 
     // Force garbage collection if available (requires --expose-gc)
     if (global.gc && memUsage.heapUsed > 500 * 1024 * 1024) { // > 500MB
-      console.log('🗑️  Running garbage collection...');
+      metricsLog.warn('High memory usage detected, invoking garbage collection');
       global.gc();
     }
   }, 30000); // Every 30 seconds
@@ -264,17 +271,17 @@ if (process.env.ENABLE_MEMORY_MONITORING === 'true') {
 
 // Graceful shutdown handling
 const gracefulShutdown = async (signal: string) => {
-  console.log(`📴 ${signal} received, shutting down gracefully...`);
+  log.warn({ signal }, 'Received shutdown signal, shutting down gracefully');
 
   try {
     // Cleanup NEAR connections
     await cleanupNear();
   } catch (error) {
-    console.error('❌ Error during NEAR cleanup:', error);
+    log.error({ err: error }, 'Error during NEAR cleanup');
   }
 
   server.close(() => {
-    console.log('✅ Server closed');
+    log.info('HTTP server closed');
     process.exit(0);
   });
 };
@@ -332,6 +339,30 @@ const extractErrorMessage = (error: any): string => {
 
   // Fallback
   return 'Unknown error occurred during transaction processing';
+};
+
+const findFailureInOutcome = (outcome: any): any | null => {
+  if (!outcome) return null;
+
+  const status = outcome.status || outcome.finalExecutionStatus;
+
+  if (status && typeof status === 'object' && 'Failure' in status) {
+    return status.Failure;
+  }
+
+  if (typeof status === 'string' && status.toLowerCase().includes('failure')) {
+    return status;
+  }
+
+  const receiptsOutcome = outcome.receiptsOutcome || outcome.receipts_outcome;
+  if (Array.isArray(receiptsOutcome)) {
+    for (const receipt of receiptsOutcome) {
+      const failure = findFailureInOutcome(receipt?.outcome);
+      if (failure) return failure;
+    }
+  }
+
+  return null;
 };
 
 // Retry helper with exponential backoff for view RPC calls
@@ -442,8 +473,8 @@ app.post('/send-ft', async (req: Request, res: Response) => {
         return res.status(500).send({ error: 'Sandbox account not initialized' });
       }
       account = nearInterface.account;
-      console.log('🔍 Sandbox debug - Account:', account.accountId);
-      console.log('🔍 Sandbox debug - FT Contract:', config.ftContract);
+      requestLog.debug({ accountId: account.accountId }, 'Sandbox account loaded');
+      requestLog.debug({ contractId: config.ftContract }, 'Sandbox FT contract resolved');
     } else {
       // Use @eclipseeer/near-api-ts for testnet
       if (!nearInterface.signer) {
@@ -523,8 +554,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
     const actions: any[] = [];
 
     // TEMPORARY: Skip storage deposits for testing - focus on ft_transfer only
-    console.log('SKIP_STORAGE_CHECK:', skipStorageCheck);
-    console.log('Storage checks:', storageChecks);
+  requestLog.debug({ skipStorageCheck, storageChecks }, 'Storage registration summary');
 
     // Add all ft_transfer actions (skip storage deposits for now)
     for (const transfer of transferList) {
@@ -542,7 +572,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       );
     }
 
-    console.log('Built actions:', actions.length);
+  requestLog.debug({ actionCount: actions.length }, 'Prepared NEAR actions');
 
     // 4) Execute batch transaction
     let result: any;
@@ -552,7 +582,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       const results = [];
 
       for (const transfer of transferList) {
-        console.log('🔍 About to call contract:', config.ftContract, 'method: ft_transfer');
+  requestLog.debug({ contractId: config.ftContract }, 'Invoking ft_transfer via sandbox account');
         const actionResult = await account.functionCall({
           contractId: config.ftContract,
           methodName: 'ft_transfer',
@@ -590,6 +620,16 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       });
     }
 
+    const failure = findFailureInOutcome(result);
+    if (failure) {
+      requestLog.error({ failure }, 'On-chain failure detected');
+      return res.status(500).send({
+        error: 'FT transfer failed on-chain',
+        details: failure,
+        result,
+      });
+    }
+
     const transferCount = transferList.length;
     res.send({
       message: `FT transfer${transferCount > 1 ? 's' : ''} initiated successfully`,
@@ -597,34 +637,15 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       result
     });
   } catch (error: any) {
-    console.error('FT transfer failed:', error);
-    console.error('Error message:', error.message);
-    console.error('Error name:', error.name);
-
-    if (error.cause) {
-      console.error('Error cause name:', error.cause.name);
-      console.error('Error cause message:', error.cause.message);
-      console.error('Error cause code:', error.cause.code);
-
-      if (error.cause.data) {
-        console.error('Error cause data:', error.cause.data);
-
-        // Try to extract TxExecutionError details
-        if (error.cause.data.TxExecutionError) {
-          console.error('TxExecutionError found');
-          try {
-            console.error('TxExecutionError details:', JSON.stringify(error.cause.data.TxExecutionError, null, 2));
-          } catch (e) {
-            console.error('Could not stringify TxExecutionError:', e);
-            console.error('TxExecutionError raw:', error.cause.data.TxExecutionError);
-          }
-        }
-      }
-    }
-
-    // Use improved error message extraction
+    const txExecutionError = error?.cause?.data?.TxExecutionError;
     const errorMessage = extractErrorMessage(error);
-    console.error('Extracted error message:', errorMessage);
+
+    requestLog.error({
+      err: error,
+      cause: error?.cause,
+      txExecutionError,
+      errorMessage,
+    }, 'Failed to initiate FT transfer');
 
     res
       .status(500)
@@ -638,16 +659,17 @@ const startServer = async () => {
   try {
     // Initialize NEAR connection first
     await initNear();
-    console.log(`✅ NEAR connection initialized successfully`);
+    log.info('NEAR connection initialized successfully');
 
     // Start server after NEAR is ready
-    console.log(`🚀 Server is running on http://localhost:${port}`);
-    console.log(`📊 Server configured for high concurrency:`);
-    console.log(`   - Max connections: ${server.maxConnections}`);
-    console.log(`   - Timeout: ${server.timeout}ms`);
-    console.log(`   - Keep-alive timeout: ${server.keepAliveTimeout}ms`);
+    log.info({ port }, 'Server ready to accept requests');
+    log.info({
+      maxConnections: server.maxConnections,
+      timeoutMs: server.timeout,
+      keepAliveTimeoutMs: server.keepAliveTimeout,
+    }, 'Server concurrency configuration');
   } catch (err) {
-    console.error('Failed to initialize NEAR connection:', err);
+    log.fatal({ err }, 'Failed to initialize NEAR connection');
     process.exit(1);
   }
 };

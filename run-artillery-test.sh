@@ -1,9 +1,7 @@
 #!/bin/bash
-# Artillery Load Testing Script untuk Local/Sandbox Testing
+# Artillery Load Testing Script  Local/Sandbox Testing
 # 
-# Usage:
-#   ./run-artillery-test.sh sandbox  # untuk testing lokal
-#   ./run-artillery-test.sh testnet  # untuk testing testnet
+
 
 set -euo pipefail
 
@@ -34,10 +32,17 @@ esac
 # Check prerequisites
 echo "📋 Checking prerequisites..."
 
-# Check if Artillery is installed
-if ! command -v artillery &> /dev/null; then
-    echo "❌ Artillery not found. Installing..."
-    npm install -g artillery
+# Use npx to run artillery (prefer Node 20+ for undici File support)
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -v | sed 's/v\([0-9]*\).*/\1/')"
+else
+  NODE_MAJOR=0
+fi
+
+if [ "$NODE_MAJOR" -ge 20 ]; then
+  ARTILLERY_CMD="npx artillery"
+else
+  ARTILLERY_CMD="npx --yes -p node@20 -p artillery@1.7.9 artillery"
 fi
 
 # Check if API service is running
@@ -83,8 +88,6 @@ config:
       arrivalRate: 150
       rampTo: 200
       name: "Stress Test"
-
-  processor: "./src/benchmark.ts"
   
   variables:
     receiverId:
@@ -159,28 +162,37 @@ echo "   - JSON: $OUTPUT_FILE"
 echo "   - HTML: $HTML_REPORT"
 
 # Run the test with output capture
-artillery run "$ARTILLERY_CONFIG" \
+$ARTILLERY_CMD run "$ARTILLERY_CONFIG" \
     --output "$OUTPUT_FILE" \
     --quiet
 
 # Generate HTML report
 if [ -f "$OUTPUT_FILE" ]; then
     echo "📊 Generating HTML report..."
-    artillery report "$OUTPUT_FILE" --output "$HTML_REPORT"
+    $ARTILLERY_CMD report "$OUTPUT_FILE" --output "$HTML_REPORT"
     
     echo "✅ Artillery test completed!"
     echo ""
     echo "📋 Quick Stats:"
     
     # Extract key metrics from JSON
-    if command -v jq &> /dev/null; then
-        echo "   - Total Requests: $(jq -r '.aggregate.counters."http.requests" // 0' "$OUTPUT_FILE")"
-        echo "   - Successful: $(jq -r '.aggregate.counters."http.responses" // 0' "$OUTPUT_FILE")"
-        echo "   - Failed: $(jq -r '.aggregate.counters."http.request_rate" // 0' "$OUTPUT_FILE")"
-        echo "   - Average Response Time: $(jq -r '.aggregate.summaries."http.response_time".mean // 0' "$OUTPUT_FILE")ms"
-        echo "   - Max Response Time: $(jq -r '.aggregate.summaries."http.response_time".max // 0' "$OUTPUT_FILE")ms"
-        echo "   - TPS Peak: $(jq -r '.aggregate.rates."http.request_rate" // 0' "$OUTPUT_FILE")"
-    fi
+  if command -v jq &> /dev/null; then
+  TOTAL_REQUESTS=$(jq -r '.aggregate.requestsCompleted // 0' "$OUTPUT_FILE")
+  SUCCESSFUL=$(jq -r '.aggregate.codes["200"] // 0' "$OUTPUT_FILE")
+  FAILED=$(jq -r '[.aggregate.codes | to_entries[] | select(.key | test("^[45]")) | .value] | add // 0' "$OUTPUT_FILE")
+  LATENCY_MEDIAN=$(jq -r '.aggregate.latency.median // 0' "$OUTPUT_FILE")
+  LATENCY_P95=$(jq -r '.aggregate.latency.p95 // 0' "$OUTPUT_FILE")
+  LATENCY_MAX=$(jq -r '.aggregate.latency.max // 0' "$OUTPUT_FILE")
+  TPS_MEAN=$(jq -r '.aggregate.rps.mean // 0' "$OUTPUT_FILE")
+
+    echo "   - Total Requests: ${TOTAL_REQUESTS}"
+    echo "   - Successful (200s): ${SUCCESSFUL}"
+    echo "   - Failed (4xx/5xx): ${FAILED}"
+    echo "   - Latency Median: ${LATENCY_MEDIAN}ms"
+    echo "   - Latency p95: ${LATENCY_P95}ms"
+    echo "   - Latency Max: ${LATENCY_MAX}ms"
+    echo "   - Avg RPS: ${TPS_MEAN}"
+  fi
     
     echo ""
     echo "📊 View detailed results:"

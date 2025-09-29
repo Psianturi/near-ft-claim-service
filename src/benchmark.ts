@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { setTimeout } from 'timers/promises';
 
 const API_URL = 'http://localhost:3000/send-ft';
 const TOTAL_REQUESTS = 60000;

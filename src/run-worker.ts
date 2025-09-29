@@ -4,13 +4,16 @@ dotenv.config();
 
 import './worker.js';
 import { initNear } from './near.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger({ module: 'worker-runner' });
 
 (async () => {
   try {
     await initNear();
-    console.log('Worker initialized and ready to process jobs');
+    log.info('Worker initialized and ready to process jobs');
   } catch (error) {
-    console.error('Failed to initialize worker:', error);
+    log.error({ err: error }, 'Failed to initialize worker');
     process.exit(1);
   }
 })();

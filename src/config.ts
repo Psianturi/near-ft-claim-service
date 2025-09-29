@@ -2,16 +2,19 @@
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { createLogger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const log = createLogger({ module: 'config' });
 
 // Determine which env file to load
 const isSandbox = process.env.NEAR_ENV === 'sandbox';
 const envFile = isSandbox ? '.env' : '.env.testnet';
 const envPath = join(__dirname, '..', envFile);
 
-console.log(`🔧 Loading config from: ${envFile}`);
+log.info({ envFile }, 'Loading configuration');
 dotenv.config({ path: envPath });
 
 let config = {
@@ -27,12 +30,13 @@ let config = {
 
 // Override sandbox
 if (isSandbox) {
-  console.log('🔧 Sandbox config debug:');
-  console.log('   - process.env.NEAR_ENV:', process.env.NEAR_ENV);
-  console.log('   - process.env.NODE_URL:', process.env.NODE_URL);
-  console.log('   - process.env.RPC_URLS:', process.env.RPC_URLS);
-  console.log('   - process.env.FT_CONTRACT:', process.env.FT_CONTRACT);
-  console.log('   - process.env.MASTER_ACCOUNT:', process.env.MASTER_ACCOUNT);
+  log.debug({
+    nearEnv: process.env.NEAR_ENV,
+    nodeUrlEnv: process.env.NODE_URL,
+    rpcUrlsEnv: process.env.RPC_URLS,
+    ftContractEnv: process.env.FT_CONTRACT,
+    masterAccountEnv: process.env.MASTER_ACCOUNT,
+  }, 'Sandbox configuration environment variables');
   const oldConfig = { ...config };
   config = {
     ...config,
@@ -45,10 +49,12 @@ if (isSandbox) {
     helperUrl: 'http://localhost:3000',
     explorerUrl: 'http://localhost:9001/explorer',
   };
-  console.log('   - Final nodeUrl:', config.nodeUrl);
-  console.log('   - Final ftContract:', config.ftContract);
-  console.log('   - Final masterAccount:', config.masterAccount);
-  console.log('   - Config changed:', JSON.stringify(oldConfig) !== JSON.stringify(config));
+  log.debug({
+    nodeUrl: config.nodeUrl,
+    ftContract: config.ftContract,
+    masterAccount: config.masterAccount,
+    changed: JSON.stringify(oldConfig) !== JSON.stringify(config),
+  }, 'Final sandbox configuration');
 }
 
 export { config };

@@ -21,12 +21,24 @@ async function testAPIService() {
   console.log(`   User: ${userAccount.accountId}\n`);
 
   // 3. Deploy FT Contract
-  const wasmPath = path.join(process.cwd(), '../ft/target/near/fungible_token.wasm');
-  if (!fs.existsSync(wasmPath)) {
-    throw new Error(`FT contract WASM not found at: ${wasmPath}`);
-  }
+    // Prefer local copy first, then fall back to freshly compiled artifact
+    const localWasmPath = path.join(process.cwd(), 'fungible_token.wasm');
+  const sourceWasmPath = path.join(process.cwd(), '../ft/target/wasm32-unknown-unknown/release/fungible_token.wasm');
+  const oldWasmPath = path.join(process.cwd(), '../ft/target/near/fungible_token.wasm');
 
-  const wasm = fs.readFileSync(wasmPath);
+    const wasmPath = [localWasmPath, sourceWasmPath, oldWasmPath].find((candidate) =>
+      fs.existsSync(candidate),
+    );
+
+    if (!wasmPath) {
+      throw new Error(
+        `FT contract WASM not found at ${localWasmPath}, ${sourceWasmPath}, or ${oldWasmPath}`,
+      );
+    }
+
+    console.log(`   Using WASM file: ${wasmPath}`);
+
+    const wasm = fs.readFileSync(wasmPath);
   await ftContractAccount.deploy(wasm);
   console.log('✅ FT contract deployed');
 
@@ -71,19 +83,36 @@ async function testAPIService() {
     }
   });
 
-  // Wait for API service to start
-  await new Promise((resolve) => {
+  // Wait for API service to start (increased timeout)
+  await new Promise((resolve, reject) => {
     let output = '';
+    let stderrOutput = '';
+    const timeout = setTimeout(() => {
+      console.log('❌ API service startup timeout');
+      console.log('API stdout:', output);
+      console.log('API stderr:', stderrOutput);
+      reject(new Error('API service startup timeout'));
+    }, 120000); // 2 minutes timeout
+
     apiProcess.stdout?.on('data', (data) => {
       output += data.toString();
+      console.log('API stdout:', data.toString().trim());
       if (output.includes('Server is running on http://localhost:3000')) {
         console.log('✅ API service started');
+        clearTimeout(timeout);
         resolve(true);
       }
     });
 
     apiProcess.stderr?.on('data', (data) => {
-      console.log('API stderr:', data.toString());
+      stderrOutput += data.toString();
+      console.log('API stderr:', data.toString().trim());
+    });
+
+    apiProcess.on('error', (error) => {
+      clearTimeout(timeout);
+      console.log('❌ API process error:', error);
+      reject(error);
     });
   });
 

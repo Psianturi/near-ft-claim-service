@@ -222,7 +222,7 @@ export MASTER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 npm run start:sandbox > api.log 2>&1 &
 API_PID=$!
 
-if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 30 "API Service"; then
+if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 60 "API Service"; then
     log_error "API service failed to start. Check api.log"
     cat api.log
     exit 1

@@ -28,6 +28,23 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 - **Connection Pool Optimization**: 50,000 max connections with keep-alive agents
 - **Comprehensive Load Testing**: Validated with Artillery (19,400+ requests processed)
 
+## 2025-09-29 Updates & Lifecycle
+
+### 🔄 Recent changes
+- Adopted **Pino** structured logging (`src/logger.ts`) with pretty output locally and JSON-friendly fields for ingestion.
+- Default runtime aligned with **Node.js 24** to support Artillery’s undici `File` implementation during benchmarks.
+- New Artillery artefacts: `artillery-results-testnet-20250929-070536.json` & `artillery-report-testnet-20250929-070536.html` (87 req/s average, 23.6k requests).
+
+### 📈 Observed during latest testnet run
+- ~90% of HTTP 500 responses map to on-chain panics: `Smart contract panicked: The account <receiver> is not registered`. Register recipients or enable `storage_deposit` before issuing transfers to avoid this.
+- RPC-side pressure showed up as **ETIMEDOUT/ECONNRESET** errors (FastNEAR rate limiting). Mitigate by staggering arrival rate, adding secondary RPC URLs, or upgrading the FastNEAR quota.
+
+### ⚙️ High-level lifecycle
+1. **Contract build & deploy** – Compile the NEP-141 contract (Rust 1.80) and publish to `posm.testnet`.
+2. **Service bootstrap** – `npm run build && npm run start:testnet` loads `.env.testnet`, initialises NEAR connections, and exposes `POST /send-ft`.
+3. **Benchmark execution** – `./run-artillery-test.sh testnet` performs a health check, drives the configured Artillery phases, and generates JSON/HTML reports.
+4. **Review & iterate** – Inspect `server.log` / console for structured error logs and correlate with the Artillery report to tune storage registration, RPC quotas, and queue limits.
+
 ## Performance
 
 ### ⚡ **Latest Benchmark Results (2025-09-28)**

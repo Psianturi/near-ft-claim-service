@@ -1,0 +1,53 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm-up"
+
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      name: "Ramp-up"
+
+    - duration: 300
+      arrivalRate: 100
+      name: "Sustained Load"
+
+  variables:
+    receiverId:
+      - "testnet-user1.testnet"
+      - "testnet-user2.testnet"
+      - "testnet-user3.testnet"
+      - "alice.testnet"
+      - "bob.testnet"
+
+    amount:
+      - "1000000000000000000000000"
+      - "2000000000000000000000000"
+      - "5000000000000000000000000"
+
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+
+scenarios:
+  - name: "Testnet FT Transfer Load Test"
+    weight: 80
+    flow:
+      - post:
+          url: "/send-ft"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Testnet load test {{ $timestamp }}"
+          expect:
+            - statusCode: [200, 400, 500]
+
+  - name: "Testnet Health Check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200

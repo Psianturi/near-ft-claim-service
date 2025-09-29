@@ -1,6 +1,9 @@
 import { config } from './config.js';
 import fs from 'fs';
 import path from 'path';
+import { createLogger } from './logger.js';
+
+const log = createLogger({ module: 'near' });
 
 const normalizeKey = (pk: string): string => {
   let s = (pk || '').trim();
@@ -53,7 +56,7 @@ class NearConnectionManager {
         home ? path.join(home, '.near', 'sandbox', 'validator_key.json') : '',
       ].filter(Boolean) as string[];
 
-      console.log('🔎 near.ts getSandboxKey() candidates:', JSON.stringify(candidates, null, 2));
+      log.debug({ candidates }, 'Searching sandbox validator keys');
 
       for (const p of candidates) {
         if (p && fs.existsSync(p)) {
@@ -63,20 +66,20 @@ class NearConnectionManager {
             const key = data.secret_key || data.private_key || null;
             const accountId = data.account_id || null;
             if (key && accountId === masterAccountId) {
-              console.log(`✅ near.ts found matching validator key at: ${p} for account: ${accountId}`);
+              log.info({ path: p, accountId }, 'Found matching sandbox validator key');
               return key as string;
             } else if (key) {
-              console.log(`⚠️ near.ts found validator key at: ${p} but account mismatch (expected: ${masterAccountId}, found: ${accountId})`);
+              log.warn({ path: p, expected: masterAccountId, found: accountId }, 'Validator key account mismatch');
             }
           } catch (e: any) {
-            console.warn(`⚠️ near.ts failed reading key at ${p}:`, e?.message || e);
+            log.warn({ path: p, error: e?.message || e }, 'Failed to read sandbox validator key');
           }
         }
       }
-      console.warn('⚠️ near.ts no matching validator_key.json found for account:', masterAccountId);
+      log.warn({ masterAccountId }, 'No matching sandbox validator key found');
       return null;
     } catch (e: any) {
-      console.warn('⚠️ near.ts getSandboxKey() error:', e?.message || e);
+      log.warn({ error: e?.message || e }, 'Error while searching sandbox validator keys');
       return null;
     }
   }
@@ -90,12 +93,12 @@ class NearConnectionManager {
 
   async init(): Promise<void> {
     if (this.initialized) {
-      console.log('🔄 NEAR connection already initialized, skipping...');
+      log.debug('NEAR connection already initialized, skipping');
       return;
     }
 
     if (this.initPromise) {
-      console.log('⏳ NEAR initialization in progress, waiting...');
+      log.debug('NEAR initialization in progress, waiting');
       return this.initPromise;
     }
 
@@ -105,7 +108,7 @@ class NearConnectionManager {
 
   private async _initInternal(): Promise<void> {
     try {
-      console.log('🚀 Starting NEAR connection initialization...');
+      log.info('Starting NEAR connection initialization');
 
       if (config.networkId === 'sandbox') {
         await this.initNearApiJs();
@@ -116,9 +119,9 @@ class NearConnectionManager {
       }
 
       this.initialized = true;
-      console.log('✅ NEAR connection initialization completed successfully');
+      log.info('NEAR connection initialization completed successfully');
     } catch (error) {
-      console.error('❌ NEAR connection initialization failed:', error);
+      log.error({ err: error }, 'NEAR connection initialization failed');
       this.initPromise = null;
       throw error;
     }
@@ -146,7 +149,7 @@ class NearConnectionManager {
     const near = await connect({
       networkId: 'sandbox',
       nodeUrl,
-      deps: { keyStore },
+      keyStore,
     });
 
     const account = await near.account(masterAccountId);
@@ -155,13 +158,11 @@ class NearConnectionManager {
     this.nearApiJsNear = near;
     this.nearApiJsAccount = account;
 
-    console.log(`🔍 Sandbox RPC init (near-api-js):`);
-    console.log(`   - nodeUrl: ${nodeUrl}`);
-    console.log(`   - masterAccount: ${masterAccountId}`);
-    console.log(`   - key source: env MASTER_ACCOUNT_PRIVATE_KEY`);
+    log.info({ nodeUrl, masterAccountId }, 'Sandbox RPC initialized (near-api-js)');
+    log.debug('Sandbox key source: env MASTER_ACCOUNT_PRIVATE_KEY');
 
     this.isUsingNearApiJs = true;
-    console.log(`✅ NEAR init: near-api-js (sandbox RPC)`);
+    log.info('near-api-js sandbox connection ready');
   }
 
   // Testnet/Mainnet: keep using @eclipseeer/near-api-ts
@@ -188,7 +189,7 @@ class NearConnectionManager {
           Object.assign(headers, extra as Record<string, string>);
         }
       } catch {
-        console.warn('Invalid RPC_HEADERS JSON, ignoring');
+        log.warn('Invalid RPC_HEADERS JSON, ignoring');
       }
     }
     const maybeWithHeaders = (url: string) =>
@@ -225,9 +226,10 @@ class NearConnectionManager {
 
     this.eclipseeerClient = createClient({ network });
 
-    console.log('🔍 Environment variables check:');
-    console.log('MASTER_ACCOUNT_PRIVATE_KEY exists:', !!process.env.MASTER_ACCOUNT_PRIVATE_KEY);
-    console.log('MASTER_ACCOUNT_PRIVATE_KEYS exists:', !!process.env.MASTER_ACCOUNT_PRIVATE_KEYS);
+    log.debug({
+      hasMasterAccountPrivateKey: !!process.env.MASTER_ACCOUNT_PRIVATE_KEY,
+      hasMasterAccountPrivateKeys: !!process.env.MASTER_ACCOUNT_PRIVATE_KEYS,
+    }, 'Environment variables check');
 
     const keysEnv = process.env.MASTER_ACCOUNT_PRIVATE_KEYS;
     let privateKeys: string[] = [];
@@ -236,17 +238,19 @@ class NearConnectionManager {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      console.log('Using MASTER_ACCOUNT_PRIVATE_KEYS with', privateKeys.length, 'keys');
+      log.info({ keyCount: privateKeys.length }, 'Using MASTER_ACCOUNT_PRIVATE_KEYS');
     } else {
       const single = process.env.MASTER_ACCOUNT_PRIVATE_KEY;
       if (!single) {
-        console.error('❌ Environment variables dump:', Object.keys(process.env).filter(key => key.includes('MASTER') || key.includes('PRIVATE')));
+        log.error({
+          envKeys: Object.keys(process.env).filter((key) => key.includes('MASTER') || key.includes('PRIVATE')),
+        }, 'Missing master account private key environment variables');
         throw new Error(
           'MASTER_ACCOUNT_PRIVATE_KEY or MASTER_ACCOUNT_PRIVATE_KEYS environment variable is required'
         );
       }
       privateKeys = [single];
-      console.log('Using MASTER_ACCOUNT_PRIVATE_KEY');
+      log.info('Using MASTER_ACCOUNT_PRIVATE_KEY');
     }
 
     privateKeys = privateKeys.map(normalizeKey);
@@ -275,9 +279,11 @@ class NearConnectionManager {
     } as any);
 
     this.isUsingNearApiJs = false;
-    console.log(
-      `✅ NEAR init: @eclipseeer/near-api-ts (keys=${privateKeys.length}, rpcUrls=${rpcUrlsEnv ? rpcUrlsEnv.split(',').length : 1}, headers=${Object.keys(headers).length})`
-    );
+    log.info({
+      keyCount: privateKeys.length,
+      rpcUrlCount: rpcUrlsEnv ? rpcUrlsEnv.split(',').length : 1,
+      headerCount: Object.keys(headers).length,
+    }, '@eclipseeer/near-api-ts connection ready');
   }
 
   getNear(): any {

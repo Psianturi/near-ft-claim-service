@@ -4,11 +4,14 @@ import { config } from './config.js';
 import pRetry from 'p-retry';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { functionCall, teraGas, yoctoNear } from '@eclipseeer/near-api-ts';
+import { createLogger } from './logger.js';
 
 const rateLimiter = new RateLimiterMemory({
   points: 100, // 100 points
   duration: 1, // per second
 });
+
+const log = createLogger({ module: 'worker' });
 
 transferQueue.on('job', async (job: any) => {
   const { receiverId, amount, memo } = job;
@@ -169,7 +172,7 @@ transferQueue.on('job', async (job: any) => {
       });
     }
 
-    console.log(`✅ Transfer successful to ${receiverId}`);
+    log.info({ receiverId }, 'Transfer succeeded');
     return result;
   };
 
@@ -183,11 +186,11 @@ transferQueue.on('job', async (job: any) => {
       randomize: true,
     });
   } catch (error) {
-    console.error(`❌ Transfer failed to ${receiverId}:`, error);
+    log.error({ receiverId, err: error }, 'Transfer failed');
     throw error;
   }
 });
 
 transferQueue.on('error', (err: any) => {
-  console.error(`Queue error: ${err.message}`);
+  log.error({ err }, 'Queue error');
 });
