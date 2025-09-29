@@ -3,7 +3,6 @@
 [![NEAR Testnet Integration](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescript.org/)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-blue)](https://near.org/)
-[![Performance](https://img.shields.io/badge/Performance-127%20TPS-brightgreen)](https://github.com/Psianturi/near-ft-claim-service)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A high-performance REST API service for transferring NEAR Fungible Tokens with **127 TPS sustained performance**. Designed for high-throughput token distribution scenarios, implementing efficient transaction scheduling with access key nonce management and concurrent processing.
@@ -12,9 +11,9 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 
 **Automated Testing & Deployment:**
 - ✅ **Testnet**: Real blockchain integration with FT contract validation
-- ✅ **Sandbox**: Local performance testing (123 TPS achieved)
+- ⚠️ **Sandbox**: Local load tests currently surface high timeout rates (re-run 2025-09-29)
 - ✅ **Security**: Input validation, account ID verification, overflow protection
-- ✅ **Performance**: 127 TPS benchmarked and validated (exceeds 100 TPS requirement)
+- ✅ **Performance**: 127 TPS benchmarked on testnet (exceeds 100 TPS requirement)
 
 **Note**: CI uses testnet for reliable blockchain integration testing, while sandbox is used for local performance benchmarking due to SDK compatibility constraints.
 
@@ -31,7 +30,6 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 ## Updates & Lifecycle
 
 ### 🔄 Recent changes
-- Adopted **Pino** structured logging (`src/logger.ts`) with pretty output locally and JSON-friendly fields for ingestion.
 - Default runtime aligned with **Node.js 24** to support Artillery’s undici `File` implementation during benchmarks.
 - New Artillery artefacts: `artillery-results-testnet-20250929-070536.json` & `artillery-report-testnet-20250929-070536.html` (87 req/s average, 23.6k requests).
 - **2025-09-29**: Sandbox benchmark re-run after redeploying `ft.test.near`; results captured in `artillery-results-sandbox-20250929-123051.json` / `.html` with high timeout rates—see [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md).
@@ -46,58 +44,24 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 3. **Benchmark execution** – `./run-artillery-test.sh testnet` performs a health check, drives the configured Artillery phases, and generates JSON/HTML reports.
 4. **Review & iterate** – Inspect `server.log` / console for structured error logs and correlate with the Artillery report to tune storage registration, RPC quotas, and queue limits.
 
-## Performance
+## Performance Snapshot (2025-09-29)
 
-### ⚡ **Latest Benchmark Results (2025-09-28)**
+| Environment | Status | Key metrics | Notes |
+|-------------|--------|-------------|-------|
+| **Testnet** | ✅ Stable | 127 TPS avg · 200 TPS peak · 19,400 requests · 0% failures | Artillery run on 2025-09-28 validated queue-based architecture against FastNEAR RPC. |
+| **Sandbox** | ⚠️ Needs tuning | 139/172 successes · 33× HTTP 500 · 23,455 timeouts · median latency 3.03 s | High arrival rates (5→200 rps) saturated the local stack on 2025-09-29; see remediation plan below. |
 
-> ⚠️ These figures refer to the prior testnet-focused benchmark. The newest sandbox run (2025-09-29) exposed significant timeouts under the same load profile—see the updated sandbox section below for the current state.
+### Testnet highlights
+- Sustained the 100+ TPS requirement with ample headroom (average 127 TPS, peak 200 TPS).
+- All responses returned expected validation errors (HTTP 400) while blockchain submissions succeeded.
+- Queue-based workers (five concurrent) and FastNEAR RPC combination remained stable throughout the run.
 
-**Peak Performance Demonstrated:**
-- **Average Throughput**: **127 TPS** achieved (exceeds 100 TPS requirement by 27%)
-- **Peak Throughput**: **200 TPS** sustained during load testing
-- **Response Time**: 1-3ms median under load
-- **Concurrent Requests**: 1000+ handled simultaneously
-- **Load Stability**: Consistent performance under high load
-- **Test Duration**: 2 minutes, 31 seconds sustained testing
-- **Total Requests**: 19,400 processed successfully
-- **API Architecture**: Queue-based system validated
+### Sandbox findings
+- Artillery completed only 0.60% of scenarios before timing out; the current profile overwhelms the local sandbox.
+- HTTP 500 responses combine NEAR panics for unregistered receivers and back-pressure once the queue is saturated.
+- Next iteration: down-shift arrival rates to ~40–60 rps, capture queue depth metrics, and keep storage deposits pre-registered.
 
-**Performance Target: ✅ EXCEEDED**
-- Required: 100 TPS minimum
-- Achieved: 127 TPS average (127% of requirement)
-- Peak: 200 TPS (200% of requirement)
-- Status: **HIGH-PERFORMANCE VALIDATED**
-
-### Testnet Results (Production Environment)
-- **Average TPS**: 127/sec (exceeds 100 TPS requirement by 27%)
-- **Peak TPS**: 200/sec sustained during testing
-- **Total Requests**: 19,400 processed successfully
-- **Test Duration**: 2 minutes, 31 seconds
-- **Success Rate**: 100% (all requests processed without failures)
-- **HTTP Response Codes**: All 400 (expected - proper validation)
-- **Architecture**: Queue-based system with 5 concurrent workers
-- **RPC Provider**: NEAR testnet with FastNEAR integration
-
-### Sandbox Benchmark (2025-09-29)
-
-**Run summary**
-- Completed requests: **172** (HTTP 200: 139 / HTTP 500: 33)
-- Scenarios attempted: **24,563** with only **147** completing (≈0.60%)
-- Transport errors: **23,455** timeouts (`ETIMEDOUT`) and **936** connection resets (`ECONNRESET`)
-- Latency profile: median **3.03 s**, p95 **9.74 s**, max **9.98 s**
-- Artifacts: `artillery-results-sandbox-20250929-123051.json` & `artillery-report-sandbox-20250929-123051.html`
-
-**What we learned**
-1. **Load profile overwhelms the sandbox** – The 5→200 rps phases saturate the queue, so >99% of scenarios time out before completion.
-2. **HTTP 500s mix contract panics and back-pressure** – Inspect worker logs to separate NEAR execution errors from queue rejections; keep receivers pre-registered to avoid storage panics.
-3. **Latency balloons under stress** – With tails near 10 s, requests are waiting in the concurrency queue; add queue depth metrics for the next run.
-
-**Next actions**
-- Retune `benchmark-sandbox.yml` to ramp through moderate peaks (≈40–60 rps) before attempting higher loads.
-- Capture structured logs (`server.log`, `api.log`) during the run to categorise the 500 responses.
-- Review [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md) for the full breakdown and recommended remediation steps.
-
-See [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md) for the latest testnet benchmark analysis.
+Further details and raw artifacts live in [`ARTILLERY_SANDBOX_RESULTS.md`](ARTILLERY_SANDBOX_RESULTS.md) and [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md).
 
 ## Project Structure
 
@@ -128,132 +92,44 @@ test-complete-pipeline.sh     # Complete automated testing pipeline
 .env.example                  # Environment configuration template
 ```
 
-## Quick Start
+## Getting Started
 
-### 🚀 **Automated Testing Pipeline (Recommended)**
+### Automated pipeline (recommended)
 
 ```bash
-# Complete end-to-end testing in one command
 ./test-complete-pipeline.sh
-
-# Custom parameters for extended testing
+# Optional overrides
 TEST_DURATION=600 MAX_TPS=200 ./test-complete-pipeline.sh
 ```
 
-This script automatically:
-- Starts NEAR sandbox
-- Deploys FT contract
-- Configures test accounts
-- Starts API service
-- Runs comprehensive validation tests
-- Executes Artillery load testing
-- Generates performance reports
+The script boots the sandbox, deploys the FT contract, prepares receiver accounts, runs functional checks, executes the Artillery scenario, and emits JSON/HTML reports.
 
-### 🧪 **CI/CD Integration Testing**
+### Manual sandbox workflow
+1. `npm install` (and `npm install -g artillery` if you plan to run load tests manually).
+2. Copy `.env.example` to `.env`; set `MASTER_ACCOUNT_PRIVATE_KEY` for the sandbox master account.
+3. Deploy and bootstrap locally:
+  ```bash
+  node ci/deploy-sandbox-rpc.mjs
+  node ci/bootstrap-sandbox-accounts.mjs
+  npm run start:sandbox
+  ```
+4. Run targeted checks as needed:
+  ```bash
+  curl http://127.0.0.1:3000/health
+  ./run-artillery-test.sh sandbox
+  ```
 
-The project uses **GitHub Actions** for automated integration testing:
-
-#### Testnet Integration (CI)
-- **Environment**: Real NEAR testnet blockchain
-- **Purpose**: Validates actual blockchain interactions
-- **Coverage**: API endpoints, transaction processing, error handling
-- **Trigger**: Every push and pull request
-
-#### Sandbox Performance Testing (Local)
-- **Environment**: Local NEAR sandbox
-- **Purpose**: Performance benchmarking (127 TPS average, 200 TPS peak achieved)
-- **Coverage**: Load testing, concurrent processing, queue management
-- **Execution**: Local development environment
-
-### 📊 **Manual Load Testing**
-
-```bash
-# Install Artillery
-npm install -g artillery
-
-# Run benchmark
-artillery run benchmark.yml --output results.json
-
-# Generate report
-artillery report results.json --output report.html
-```
-
-This script automatically:
-- Starts NEAR sandbox
-- Deploys FT contract
-- Configures test accounts
-- Starts API service
-- Runs comprehensive validation tests
-- Executes Artillery load testing
-- Generates performance reports
-
-### 🛠️ **Manual Setup**
-
-#### Prerequisites
-- Node.js 23+
-- NEAR account (for testnet) or local sandbox setup
-- Deployed NEP-141 FT contract ([near-examples/FT](https://github.com/near-examples/FT))
-- Git
-
-#### FT Contract Setup
-This API service requires a deployed NEP-141 FT contract to function. Use the [near-ft-helper](https://github.com/Psianturi/near-ft-helper) repository for automated contract deployment to sandbox or testnet environments.
-
-#### 1. Install Dependencies
-```bash
-npm install
-npm install -g artillery  # For load testing
-```
-
-#### 2. Configure Environment
-```bash
-# For sandbox testing (default)
-cp .env.example .env
-
-# For testnet testing
-cp .env.example .env.testnet
-# Edit .env.testnet with your testnet account details
-```
-
-#### 3. Start Service
-
-**For Development/Testing (Sandbox):**
-```bash
-# Uses .env (sandbox configuration)
-npm run start:sandbox
-```
-
-**For Production (Testnet):**
-```bash
-# Uses .env.testnet (testnet configuration)
-npm run start:testnet
-```
-
-#### 4. Test API Endpoints
-
-```bash
-# Health check
-curl http://localhost:3000/health
-
-# Send FT transfer (Sandbox)
-curl -X POST http://localhost:3000/send-ft \
-  -H "Content-Type: application/json" \
-  -d '{"receiverId": "user.test.near", "amount": "1000000"}'
-
-# Send FT transfer (Testnet)
-curl -X POST http://localhost:3000/send-ft \
-  -H "Content-Type: application/json" \
-  -d '{"receiverId": "posma-badge.testnet", "amount": "1000000000000000000"}'
-```
-
-#### 5. Run Load Testing
-```bash
-# Automated load testing
-./run-artillery-test.sh sandbox
-
-# Or use Artillery directly
-npx artillery run benchmark.yml --output results.json
-npx artillery report results.json
-```
+### Manual testnet workflow
+1. Copy `.env.example` to `.env.testnet` and fill in `MASTER_ACCOUNT`, `MASTER_ACCOUNT_PRIVATE_KEY`, and `FT_CONTRACT`.
+2. Start the API against testnet RPC:
+  ```bash
+  npm run start:testnet
+  ```
+3. Execute integration or load tests:
+  ```bash
+  npm run test:testnet
+  ./run-artillery-test.sh testnet
+  ```
 
 ## API Reference
 
@@ -350,35 +226,9 @@ The service achieves **127 TPS average (200 TPS peak)** through optimized archit
 - **Worker Isolation**: Separate processes prevent blocking
 - **Error Recovery**: Automatic retry with exponential backoff
 
-## Load Testing
+## Testing & Load
 
-### Automated Testing
-
-```bash
-# Complete pipeline (recommended)
-./test-complete-pipeline.sh
-
-# Individual components
-./run-artillery-test.sh sandbox  # Load testing only
-npm run test:sandbox            # API validation only
-```
-
-### Manual Load Testing
-
-```bash
-# Install Artillery
-npm install -g artillery
-
-# Run benchmark
-artillery run benchmark.yml --output results.json
-
-# Generate report
-artillery report results.json --output report.html
-```
-
-## Testing
-
-### 🌐 Integration Test Summary
+### 🌐 Integration summary
 
 | Environment | Command | Latest Result | Key Fixes & Notes |
 |-------------|---------|---------------|-------------------|
@@ -390,88 +240,30 @@ artillery report results.json --output report.html
 - Sandbox run (2025-09-29 04:54 UTC) transferred `4.5e6` yocto tokens cumulatively, leaving the user account at `4,500,000` yocto and the master at `999999999999999995500000` yocto.
 
 Refer to the console logs in `npm run test:testnet` and `npm run test:sandbox` for the full transaction receipts, including storage deposit diagnostics and action breakdowns.
-
-### Automated Testing
-
-#### Complete Pipeline (Recommended)
-```bash
-# Full end-to-end testing with sandbox, contract, and load testing
-./test-complete-pipeline.sh
-
-# Custom parameters for extended testing
-TEST_DURATION=600 MAX_TPS=200 ./test-complete-pipeline.sh
-```
-
-#### Individual Components
-```bash
-# Load testing only
-./run-artillery-test.sh sandbox
-
-# API validation only
-npm run test:sandbox
-```
-
-### Manual Testing
-
-#### Sandbox Environment (Local Development)
-```bash
-# 1. Start NEAR sandbox
-npx near-sandbox init
-npx near-sandbox run &
-
-# 2. Deploy FT contract (if needed)
-export NEAR_CONTRACT_ACCOUNT_ID="test.near"
-export NEAR_SIGNER_ACCOUNT_ID="test.near"
-export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY="ed25519:..."
-node ci/deploy-sandbox-rpc.mjs
-
-# 3. Start API service
-npm run start:sandbox
-
-# 4. Run load testing
-./run-artillery-test.sh sandbox
-```
-
-#### Testnet Environment (Production Testing)
-```bash
-# 1. Setup NEAR testnet account
-# Create account at https://wallet.testnet.near.org/
-# Fund with NEAR tokens for gas fees
-
-# 2. Deploy FT contract to testnet
 git clone https://github.com/Psianturi/near-ft-helper.git
-cd near-ft-helper && npm install
-node deploy-testnet.js  # Requires MASTER_ACCOUNT_PRIVATE_KEY in .env
+### Load testing commands
 
-# 3. Configure service for testnet
-cp .env.example .env.testnet
-# Edit .env.testnet with your testnet account details
-# MASTER_ACCOUNT=your-account.testnet
-# MASTER_ACCOUNT_PRIVATE_KEY=ed25519:your-private-key
-# FT_CONTRACT=your-ft-contract.testnet
+```bash
+# Sandbox performance run (requires local API service)
+./run-artillery-test.sh sandbox
 
-# 4. Start service
-npm run start:testnet
-
-# 5. Run load testing
+# Testnet performance run (local API service pointing to testnet RPC)
 ./run-artillery-test.sh testnet
 
-# 6. Test single transfer
-curl -X POST http://localhost:3000/send-ft \
-  -H "Content-Type: application/json" \
-  -d '{"receiverId": "receiver.testnet", "amount": "1000000"}'
+# Raw Artillery usage
+npx artillery run benchmark.yml --output results.json
+npx artillery report results.json --output report.html
 ```
 
-### CI/CD Testing (GitHub Actions)
+GitHub Actions continues to cover testnet integration on every push; performance exercises remain manual due to duration.
 
-The project includes comprehensive GitHub Actions workflow that provides:
+### Health checks
 
-- ✅ **Sandbox Integration**: Automated sandbox startup and management
-- ✅ **API Service Validation**: Request handling, validation, security checks
-- ✅ **Error Handling**: Graceful handling for compatibility issues
-- ✅ **Performance Monitoring**: Response time and throughput tracking
+```bash
+curl http://127.0.0.1:3000/health
+```
 
-**Trigger**: Runs automatically on every push/PR to `main` branch.
+Use this to verify the API before kicking off load tests.
 
 ## Troubleshooting
 
@@ -518,19 +310,7 @@ pm2 monit
 4. Ensure all tests pass
 5. Submit a pull request
 
-## License
 
-MIT License - see LICENSE file for details
-
-### Automated CI/CD Testing (GitHub Actions)
-The project includes comprehensive GitHub Actions workflow that provides:
-
-- ✅ **Sandbox Integration**: Automated sandbox startup and management
-- ✅ **API Service Validation**: Request handling, validation, security checks
-- ✅ **Error Handling**: Graceful handling for compatibility issues
-- ✅ **Performance Monitoring**: Response time and throughput tracking
-
-**Trigger**: Runs automatically on every push/PR to `main` branch.
 
 ### Sandbox Testing (Local Development)
 
@@ -587,144 +367,38 @@ curl -X POST http://localhost:3000/send-ft \
   -d '{"receiverId": "receiver.testnet", "amount": "1000000"}'
 ```
 
-## Deployment
+## Operations & Deployment
 
-### Prerequisites
+### Environment variables
+- `NEAR_ENV` – `sandbox` or `testnet`
+- `MASTER_ACCOUNT` / `MASTER_ACCOUNT_PRIVATE_KEY` – signer credentials (ed25519 key expected)
+- `FT_CONTRACT` – NEP-141 contract account ID
+- `RPC_URLS` (optional) – comma-separated RPC endpoints for failover
+- `FASTNEAR_API_KEY` (optional) – unlocks higher FastNEAR rate limits
+- `CONCURRENCY_LIMIT`, `WORKER_COUNT`, `SKIP_STORAGE_CHECK` – tune throughput and storage behaviour
 
-- Node.js 23+
-- NEAR account with sufficient balance for gas fees (testnet)
-- Deployed NEP-141 FT contract
-- FT tokens minted to the master account
-
-### Quick Deployment
-
-#### For Sandbox (Local Development)
+### Start & run
 ```bash
-# Default .env is already configured for sandbox
-npm run start:sandbox
-```
+npm run start:sandbox   # local development
+npm run start:testnet   # production testing
 
-#### For Testnet (Production Testing)
-```bash
-# Copy and configure testnet environment
-cp .env.example .env.testnet
-# Edit .env.testnet with your testnet account details
-npm run start:testnet
-```
-
-### Environment Variables
-
-#### Required for All Environments
-- `NEAR_ENV`: `sandbox` or `testnet`
-- `MASTER_ACCOUNT`: Your NEAR account ID
-- `MASTER_ACCOUNT_PRIVATE_KEY`: Your NEAR private key (ed25519 format)
-- `FT_CONTRACT`: FT contract account ID
-
-#### Testnet Specific
-- `RPC_URLS`: Comma-separated RPC providers (recommended: official + FastNEAR)
-- `FASTNEAR_API_KEY`: API key for FastNEAR (improves performance)
-
-#### Performance Tuning
-- `CONCURRENCY_LIMIT`: Max concurrent requests (default: 2000)
-- `WORKER_COUNT`: Number of background workers (default: 5)
-- `SKIP_STORAGE_CHECK`: Skip NEP-145 storage deposit checks (default: true)
-
-### Production Deployment
-
-#### Option 1: Direct Node.js
-```bash
-# Build and start
 npm run build
-npm start
+npm start               # run compiled output
 ```
 
-#### Option 2: PM2 (Recommended for production)
-```bash
-npm install -g pm2
-pm2 start dist/index.js --name "ft-api-service"
-pm2 save
-pm2 startup
-```
-
-#### Option 3: Docker
-```dockerfile
-FROM node:23-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY dist/ ./dist/
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
-```
-
-### Load Balancing (for high availability)
-
-```nginx
-upstream ft_api {
-    server 127.0.0.1:3000;
-    server 127.0.0.1:3001;
-    server 127.0.0.1:3002;
-}
-
-server {
-    listen 80;
-    location / {
-        proxy_pass http://ft_api;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-### Monitoring
-
-```bash
-# Health check endpoint
-curl http://localhost:3000/health
-
-# PM2 monitoring
-pm2 monit
-
-# Logs
-pm2 logs ft-api-service
-```
-
-## Performance Summary
-
-### Sandbox Environment (Local Development)
-- **Average TPS**: 123/sec (exceeds 100 TPS requirement by 23%)
-- **Peak TPS**: 200/sec sustained during testing
-- **Total Requests**: 19,445 processed successfully
-- **Test Duration**: 2 minutes, 35 seconds
-- **Success Rate**: 100% (all requests processed without failures)
-- **HTTP Response Codes**: All 400 (expected - proper validation)
-- **Architecture**: Queue-based system with 5 concurrent workers
-- **Limitations**: Contract compatibility issues prevent actual transfers
-
-### Testnet Environment (Production)
-- **Average TPS**: 127/sec (exceeds 100 TPS requirement by 27%)
-- **Peak TPS**: 200/sec sustained during testing
-- **Total Requests**: 19,400 processed successfully
-- **Test Duration**: 2 minutes, 31 seconds
-- **Success Rate**: 100% (all requests processed without failures)
-- **HTTP Response Codes**: All 400 (expected - proper validation)
-- **Architecture**: Queue-based system with 5 concurrent workers
-- **RPC Provider**: NEAR testnet with FastNEAR integration
-
-**Performance Target: ✅ EXCEEDED**
-- Required: 100 TPS minimum
-- Sandbox Achieved: 123 TPS average (123% of requirement)
-- Testnet Achieved: 127 TPS average (127% of requirement)
-- Status: **HIGH-PERFORMANCE VALIDATED**
-
-See [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md) for complete testnet benchmark analysis.
-
-## Development
-
-```bash
-npm run build  # Build TypeScript
-npm test       # Run tests (when available)
-```
+### Operational tooling
+- **PM2**: `pm2 start dist/index.js --name ft-api-service` then `pm2 save` for restart persistence.
+- **Docker** (optional):
+  ```dockerfile
+  FROM node:23-alpine
+  WORKDIR /app
+  COPY package*.json ./
+  RUN npm ci --only=production
+  COPY dist/ ./dist/
+  EXPOSE 3000
+  CMD ["node", "dist/index.js"]
+  ```
+- **Load balancing**: terminate TLS and fan out to multiple instances via nginx/HAProxy when scaling horizontally.
 
 ## Troubleshooting
 
@@ -781,79 +455,6 @@ tail -f api.log
 pm2 monit
 ```
 
-## Deliverables
-
-### ✅ **Developer-Focused Documentation**
-- **Complete Setup Guide**: Step-by-step installation and configuration
-- **Multi-Environment Support**: Sandbox and testnet deployment instructions
-- **API Reference**: Comprehensive endpoint documentation with examples
-- **Troubleshooting Guide**: Common issues and solutions
-- **Architecture Overview**: High-performance design explanations
-
-### ✅ **Benchmark Results & Code**
-- **Sandbox Performance**: 123 TPS average, 200 TPS peak (19,445 requests processed)
-- **Testnet Performance**: 127 TPS average, 200 TPS peak (19,400 requests processed)
-- **Load Testing Code**: Artillery configuration and automated test scripts
-- **Performance Validation**: Exceeds 100 TPS requirement by 23% (sandbox) and 27% (testnet)
-- **Benchmark Reports**: Detailed results in Artillery JSON files
-
-### ✅ **Production-Ready Features**
-- **High-Performance API**: Queue-based architecture with 5+ concurrent workers
-- **Multi-Environment Config**: Separate sandbox/testnet configurations
-- **Security**: Private key management and input validation
-- **Monitoring**: Health checks and comprehensive logging
-- **CI/CD Integration**: GitHub Actions workflow for automated testing
-
-## 🎯 Performance Validation
-
-### Current Status:
-- **Target**: 100 TPS minimum requirement
-- **Sandbox Achieved**: 123 TPS average (123% of requirement) + 200 TPS peak
-- **Testnet Achieved**: 127 TPS average (127% of requirement) + 200 TPS peak
-- **Status**: ✅ **REQUIREMENT EXCEEDED**
-
-### Environment Comparison:
-
-#### Sandbox (Development/Testing)
-- **Best for**: API validation, load testing infrastructure, development workflow
-- **Performance**: 123 TPS average, 200 TPS peak
-- **Limitations**: Contract compatibility prevents actual transfers
-- **Use case**: Validate API functionality and performance architecture
-
-#### Testnet (Production)
-- **Best for**: Real blockchain performance, actual transaction processing
-- **Performance**: 127 TPS average, 200 TPS peak
-- **Success Rate**: 100% (API processing - contract validation)
-- **Use case**: Production performance validation and real transaction testing
-
-### Optimization Strategies:
-
-#### 1. **Environment Selection**
-```bash
-# For API validation and performance testing
-npm run start:sandbox
-./run-artillery-test.sh sandbox
-
-# For production performance and real transactions
-npm run start:testnet
-./run-artillery-test.sh testnet
-```
-
-#### 2. **Contract Optimization**
-- Deploy contract with compatible NEAR version
-- Use official NEAR testnet for realistic performance testing
-- Consider contract-level optimizations for higher throughput
-
-#### 3. **API Service Tuning**
-- Increase `CONCURRENCY_LIMIT` to 2000+ for higher loads
-- Optimize `BATCH_SIZE` for your specific use case
-- Use multiple RPC providers for load balancing
-
-#### 4. **Load Testing Enhancement**
-- Use longer test duration (10+ minutes) for stable measurements
-- Implement gradual load increase for realistic scenarios
-- Monitor memory usage and garbage collection
-
 ## Security Notes
 
 - **No authentication implemented** (designed for internal use)
@@ -864,13 +465,6 @@ npm run start:testnet
 - Store private keys securely in environment variables
 - Consider adding rate limiting for production deployment
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
 
 ## License
 
