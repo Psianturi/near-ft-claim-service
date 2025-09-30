@@ -3,7 +3,7 @@
 [![NEAR Testnet Integration](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescript.org/)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-blue)](https://near.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 A high-performance REST API service for transferring NEAR Fungible Tokens with **127 TPS sustained performance**. Designed for high-throughput token distribution scenarios, implementing efficient transaction scheduling with access key nonce management and concurrent processing.
 
@@ -232,6 +232,7 @@ The service achieves **127 TPS average (200 TPS peak)** through optimized archit
 
 | Environment | Command | Latest Result | Key Fixes & Notes |
 |-------------|---------|---------------|-------------------|
+| **Browser UI (mocked)** | `npm run test:frontend` | ✅ Playwright drives the sample frontend, stubbing `/send-ft` & `/health` responses. | • Verifies request payload formatting and response rendering.<br>• Ensures the static UI stays functional while new backend features ship.<br>• Runs headless by default; add `:headed` suffix for visual debugging. |
 | **Testnet** | `npm run test:testnet` | ✅ `src/test-testnet.ts` boots the API, performs a `/send-ft` transfer, waits for final NEAR RPC confirmation, and verifies the balance increase on-chain. | • Added automatic NEP-145 storage deposits when the receiver is missing.<br>• Forced `WAIT_UNTIL=Final` to avoid optimistic RPC reads.<br>• Switched balance polling to raw RPC queries to dodge cached client state. |
 | **Sandbox** | `npm run test:sandbox` | ✅ near-workspaces spins up a fresh chain, deploys `fungible_token.wasm`, runs three `/send-ft` calls, and confirms the on-chain balance delta (3/3 success). | • Replaced hard-coded `127.0.0.1:3030` with the dynamic RPC URL emitted by near-workspaces.<br>• Injected the sandbox master key from the freshly created account.<br>• Re-enabled storage checks so the worker issues deposits when needed.<br>• Updated log matching so the test recognises “Server ready to accept requests”. |
 

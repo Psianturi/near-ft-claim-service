@@ -63,3 +63,9 @@ nearcore/
 
 # Local sandbox data
 .home/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
+*.last-run.json
