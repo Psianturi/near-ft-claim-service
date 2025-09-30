@@ -42,7 +42,7 @@ fi
 if [ "$NODE_MAJOR" -ge 20 ]; then
   ARTILLERY_CMD="npx artillery"
 else
-  ARTILLERY_CMD="npx --yes -p node@20 -p artillery@1.7.9 artillery"
+  ARTILLERY_CMD="npx --yes -p node@20 -p artillery@2.0.26 artillery"
 fi
 
 # Check if API service is running

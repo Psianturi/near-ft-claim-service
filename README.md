@@ -35,6 +35,7 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 - Default runtime aligned with **Node.js 24** to support Artillery’s undici `File` implementation during benchmarks.
 - New Artillery artefacts: `artillery-results-testnet-20250929-070536.json` & `artillery-report-testnet-20250929-070536.html` (87 req/s average, 23.6k requests).
 - **2025-09-29**: Sandbox benchmark re-run after redeploying `ft.test.near`; results captured in `artillery-results-sandbox-20250929-123051.json` / `.html` with high timeout rates—see [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md).
+- **2025-09-30**: Security remediation – upgraded Artillery to **2.0.26**, pinned `base-x@3.0.11` via npm overrides, and verified `npm audit` / `npm run security` complete with 0 vulnerabilities.
 
 ### 📈 Observed during latest testnet run
 - ~90% of HTTP 500 responses map to on-chain panics: `Smart contract panicked: The account <receiver> is not registered`. Register recipients or enable `storage_deposit` before issuing transfers to avoid this.
@@ -107,7 +108,7 @@ TEST_DURATION=600 MAX_TPS=200 ./test-complete-pipeline.sh
 The script boots the sandbox, deploys the FT contract, prepares receiver accounts, runs functional checks, executes the Artillery scenario, and emits JSON/HTML reports.
 
 ### Manual sandbox workflow
-1. `npm install` (and `npm install -g artillery` if you plan to run load tests manually).
+1. `npm install` (Artillery 2.x is available via `npx artillery`; ensure you're on Node.js 20+ for undici File support).
 2. Copy `.env.example` to `.env`; set `MASTER_ACCOUNT_PRIVATE_KEY` for the sandbox master account.
 3. Deploy and bootstrap locally:
   ```bash
@@ -462,6 +463,7 @@ pm2 monit
 ## Security Notes
 
 - **No authentication implemented** (designed for internal use)
+- **Dependency hygiene**: `npm run security` (audit-ci) and `npm audit` now complete with 0 vulnerabilities after pinning `base-x@3.0.11` via npm overrides and upgrading Artillery to 2.0.26.
 - **Private keys must be valid NEAR ed25519 keys** (64-byte binary format)
   - The sample keys in `.env` are placeholders and will cause validation errors
   - Replace with actual NEAR account private keys for production use
