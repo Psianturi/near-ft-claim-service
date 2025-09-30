@@ -1,6 +1,7 @@
 # NEAR Fungible Token API Service
 
-[![NEAR Testnet Integration](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/testnet-integration.yml)
+[![CI](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml)
+[![Sandbox Integration](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescript.org/)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-blue)](https://near.org/)
 
@@ -10,8 +11,9 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 ## 🚀 CI/CD Status
 
 **Automated Testing & Deployment:**
-- ✅ **Testnet**: Real blockchain integration with FT contract validation
-- ⚠️ **Sandbox**: Local load tests currently surface high timeout rates (re-run 2025-09-29)
+- ✅ **CI quality gate** (`ci.yml`): TypeScript typecheck, Playwright UI suite, and critical security audit on every PR/push
+- ✅ **Sandbox integration** (`sandbox-integration.yml`): near-workspaces flow that deploys a fresh chain and runs `/send-ft` against it on schedule / demand
+- ⚠️ **Sandbox load tests**: Local Artillery runs still surface high timeout rates (re-run 2025-09-29)
 - ✅ **Security**: Input validation, account ID verification, overflow protection
 - ✅ **Performance**: 127 TPS benchmarked on testnet
 
@@ -239,8 +241,9 @@ The service achieves **127 TPS average (200 TPS peak)** through optimized archit
 **Outputs:**
 - Testnet run (2025-09-29 04:45 UTC) increased the receiver balance by the requested transfer amount and exited with `0` after the health check.
 - Sandbox run (2025-09-29 04:54 UTC) transferred `4.5e6` yocto tokens cumulatively, leaving the user account at `4,500,000` yocto and the master at `999999999999999995500000` yocto.
+- Frontend suite (`npm run test:frontend`) is documented along with the full testing pyramid in [`docs/testing.md`](docs/testing.md).
 
-Refer to the console logs in `npm run test:testnet` and `npm run test:sandbox` for the full transaction receipts, including storage deposit diagnostics and action breakdowns.
+Refer to the console logs in `npm run test:testnet` and `npm run test:sandbox` for the full transaction receipts, including storage deposit diagnostics and action breakdowns. CI workflow details (including sandbox integration) live in [`docs/ci.md`](docs/ci.md).
 git clone https://github.com/Psianturi/near-ft-helper.git
 ### Load testing commands
 
