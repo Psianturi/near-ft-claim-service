@@ -13,7 +13,7 @@ A high-performance REST API service for transferring NEAR Fungible Tokens with *
 - ✅ **Testnet**: Real blockchain integration with FT contract validation
 - ⚠️ **Sandbox**: Local load tests currently surface high timeout rates (re-run 2025-09-29)
 - ✅ **Security**: Input validation, account ID verification, overflow protection
-- ✅ **Performance**: 127 TPS benchmarked on testnet (exceeds 100 TPS requirement)
+- ✅ **Performance**: 127 TPS benchmarked on testnet
 
 **Note**: CI uses testnet for reliable blockchain integration testing, while sandbox is used for local performance benchmarking due to SDK compatibility constraints.
 

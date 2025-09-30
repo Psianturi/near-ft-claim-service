@@ -3,6 +3,7 @@ import './polyfills.js';
 
 // 2. Import other modules (config.ts will load dotenv)
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import bodyParser from 'body-parser';
 import https from 'https';
 import http from 'http';
@@ -27,7 +28,18 @@ process.on('unhandledRejection', (reason: any) => {
 log.info({ config }, 'Final configuration loaded');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3000;
+
+const allowedOrigins = (process.env.CORS_ALLOW_ORIGINS || '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = allowedOrigins.includes('*')
+  ? { origin: true } // Reflect request origin
+  : { origin: allowedOrigins };
+
+app.use(cors(corsOptions));
 
 // Configure Express for high concurrency
 app.set('trust proxy', 1);
@@ -35,8 +47,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Configure server for high performance
-const server = app.listen(port, () => {
-  log.info({ port }, 'HTTP server listening');
+const host = process.env.HOST || '0.0.0.0';
+const server = app.listen(port, host, () => {
+  log.info({ port, host }, 'HTTP server listening');
 });
 
 // Configure server for maximum performance (600+ TPS) - inspired by Rust implementation
