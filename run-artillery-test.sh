@@ -155,49 +155,52 @@ echo "📊 Configuration: $ARTILLERY_CONFIG"
 echo "🎯 Target: $TARGET_URL"
 
 OUTPUT_FILE="artillery-results-${ENVIRONMENT}-$(date +%Y%m%d-%H%M%S).json"
-HTML_REPORT="artillery-report-${ENVIRONMENT}-$(date +%Y%m%d-%H%M%S).html"
-
 echo "📝 Results will be saved to:"
 echo "   - JSON: $OUTPUT_FILE"
-echo "   - HTML: $HTML_REPORT"
+# Deprecated: Artillery 2.x no longer supports local HTML report generation.
 
 # Run the test with output capture
 $ARTILLERY_CMD run "$ARTILLERY_CONFIG" \
     --output "$OUTPUT_FILE" \
     --quiet
 
-# Generate HTML report
 if [ -f "$OUTPUT_FILE" ]; then
-    echo "📊 Generating HTML report..."
-    $ARTILLERY_CMD report "$OUTPUT_FILE" --output "$HTML_REPORT"
-    
     echo "✅ Artillery test completed!"
     echo ""
     echo "📋 Quick Stats:"
     
-    # Extract key metrics from JSON
-  if command -v jq &> /dev/null; then
-  TOTAL_REQUESTS=$(jq -r '.aggregate.requestsCompleted // 0' "$OUTPUT_FILE")
-  SUCCESSFUL=$(jq -r '.aggregate.codes["200"] // 0' "$OUTPUT_FILE")
-  FAILED=$(jq -r '[.aggregate.codes | to_entries[] | select(.key | test("^[45]")) | .value] | add // 0' "$OUTPUT_FILE")
-  LATENCY_MEDIAN=$(jq -r '.aggregate.latency.median // 0' "$OUTPUT_FILE")
-  LATENCY_P95=$(jq -r '.aggregate.latency.p95 // 0' "$OUTPUT_FILE")
-  LATENCY_MAX=$(jq -r '.aggregate.latency.max // 0' "$OUTPUT_FILE")
-  TPS_MEAN=$(jq -r '.aggregate.rps.mean // 0' "$OUTPUT_FILE")
+    # Extract key metrics from JSON (Artillery 2.x schema)
+    if command -v jq &> /dev/null; then
+      TOTAL_REQUESTS=$(jq -r '.aggregate.counters["http.requests"] // 0' "$OUTPUT_FILE")
+      SUCCESSFUL=$(jq -r '.aggregate.counters["http.codes.200"] // 0' "$OUTPUT_FILE")
+  FAIL_4XX=$(jq -r '[.aggregate.counters | to_entries[] | select(.key | test("^http\\.codes\\.4")) | .value] | add // 0' "$OUTPUT_FILE")
+      FAIL_5XX=$(jq -r '.aggregate.counters["http.codes.500"] // 0' "$OUTPUT_FILE")
+      TIMEOUTS=$(jq -r '.aggregate.counters["errors.ETIMEDOUT"] // 0' "$OUTPUT_FILE")
+      ECONNRESET=$(jq -r '.aggregate.counters["errors.ECONNRESET"] // 0' "$OUTPUT_FILE")
+      LATENCY_MEDIAN=$(jq -r '.aggregate.summaries["http.response_time"].median // 0' "$OUTPUT_FILE")
+      LATENCY_P95=$(jq -r '.aggregate.summaries["http.response_time"].p95 // 0' "$OUTPUT_FILE")
+      LATENCY_MAX=$(jq -r '.aggregate.summaries["http.response_time"].max // 0' "$OUTPUT_FILE")
+      TPS_MEAN=$(jq -r '.aggregate.rates["http.request_rate"] // 0' "$OUTPUT_FILE")
 
-    echo "   - Total Requests: ${TOTAL_REQUESTS}"
-    echo "   - Successful (200s): ${SUCCESSFUL}"
-    echo "   - Failed (4xx/5xx): ${FAILED}"
-    echo "   - Latency Median: ${LATENCY_MEDIAN}ms"
-    echo "   - Latency p95: ${LATENCY_P95}ms"
-    echo "   - Latency Max: ${LATENCY_MAX}ms"
-    echo "   - Avg RPS: ${TPS_MEAN}"
-  fi
+  TOTAL_FAILURES=$((TOTAL_REQUESTS - SUCCESSFUL))
+
+      echo "   - Total Requests: ${TOTAL_REQUESTS}"
+      echo "   - Successful (200s): ${SUCCESSFUL}"
+      echo "   - Failed Requests: ${TOTAL_FAILURES}"
+      echo "     · HTTP 5xx: ${FAIL_5XX}"
+      echo "     · HTTP 4xx: ${FAIL_4XX}"
+      echo "     · ETIMEDOUT: ${TIMEOUTS}"
+      echo "     · ECONNRESET: ${ECONNRESET}"
+      echo "   - Latency Median: ${LATENCY_MEDIAN} ms"
+      echo "   - Latency p95: ${LATENCY_P95} ms"
+      echo "   - Latency Max: ${LATENCY_MAX} ms"
+      echo "   - Avg Requests/sec: ${TPS_MEAN}"
+    fi
     
     echo ""
     echo "📊 View detailed results:"
-    echo "   - Open in browser: file://$(pwd)/$HTML_REPORT"
     echo "   - JSON data: $OUTPUT_FILE"
+    echo "   - Note: Local HTML report generation is no longer available in Artillery 2.x"
 else
     echo "❌ Artillery test failed - no output file generated"
     exit 1
