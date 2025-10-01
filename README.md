@@ -1,477 +1,340 @@
-# NEAR Fungible Token API Service
+# NEAR Fungible Token Claiming Service
 
 [![CI](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml)
 [![Sandbox Integration](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml/badge.svg)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescript.org/)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-blue)](https://near.org/)
 
+A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfers on NEAR. It is used in load tests that target **100+ TPS sustained for 60 seconds**, and supports both the local sandbox and public testnet environments.
 
-A high-performance REST API service for transferring NEAR Fungible Tokens with **127 TPS sustained performance**. Designed for high-throughput token distribution scenarios, implementing efficient transaction scheduling with access key nonce management and concurrent processing.
+---
 
-## 🚀 CI/CD Status
+## 1. TL;DR
 
-**Automated Testing & Deployment:**
-- ✅ **CI quality gate** (`ci.yml`): TypeScript typecheck, Playwright UI suite, and critical security audit on every PR/push
-- ✅ **Sandbox integration** (`sandbox-integration.yml`): near-workspaces flow that deploys a fresh chain and runs `/send-ft` against it on schedule / demand
-- ⚠️ **Sandbox load tests**: Local Artillery runs still surface high timeout rates (re-run 2025-09-29)
-- ✅ **Security**: Input validation, account ID verification, overflow protection
-- ✅ **Performance**: 127 TPS benchmarked on testnet
+| Item | Sandbox | Testnet |
+| --- | --- | --- |
+| Config file | `.env` | `.env.testnet` |
+| Entry point | `npm run start:sandbox` | `npm run start:testnet` |
+| Worker runner | `npm run run:worker:sandbox` | `npm run run:worker:testnet` |
+| Load test | `./run-artillery-test.sh sandbox` | `./run-artillery-test.sh testnet` |
+| Latest load snapshot (2025-10-01) | 39 / 13,950 requests OK, 71 RPS avg, heavy timeouts & nonce stalls | 127 TPS avg (2025-09-28 run), requires FastNEAR RPC |
 
-**Note**: CI uses testnet for reliable blockchain integration testing, while sandbox is used for local performance benchmarking due to SDK compatibility constraints.
+🔔 **Key insight**: the sandbox struggles under the current Artillery schedule even after raising workers to 8 and rotating three access keys. Expect “nonce retries exceeded” and “account doesn’t have enough balance” when the queue has to mint storage or when receipts get re-ordered. See [§5 Benchmark status](#5-benchmark-status) for the latest metrics & mitigations.
 
-## Features
+---
 
-- **POST `/send-ft`**: Transfer NEP-141 tokens with automatic NEP-145 storage handling
-- **127 TPS Performance**: Validated with Artillery load testing (exceeds 100 TPS requirement)
-- **Queue-Based Architecture**: 5 concurrent workers with advanced concurrency management
-- **Multi-Environment Support**: Testnet and sandbox environments
-- **Optimized Signing**: Uses `@eclipseeer/near-api-ts` for efficient transaction handling
-- **Connection Pool Optimization**: 50,000 max connections with keep-alive agents
-- **Comprehensive Load Testing**: Validated with Artillery (19,400+ requests processed)
+## 2. Requirements
 
-## Updates & Lifecycle
+- Node.js ≥ 20 (Node 24 recommended for undici `File` support used by Artillery 2.x)
+- npm ≥ 9
+- Rust toolchain (if rebuilding `fungible_token.wasm`)
+- NEAR Sandbox (`npx near-sandbox`) for local runs
+- FastNEAR RPC key for testnet high-throughput tests
 
-### 🔄 Recent changes
-- Default runtime aligned with **Node.js 24** to support Artillery’s undici `File` implementation during benchmarks.
-- New Artillery artefacts: `artillery-results-testnet-20250929-070536.json` & `artillery-report-testnet-20250929-070536.html` (87 req/s average, 23.6k requests).
-- **2025-09-29**: Sandbox benchmark re-run after redeploying `ft.test.near`; results captured in `artillery-results-sandbox-20250929-123051.json` / `.html` with high timeout rates—see [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md).
-- **2025-09-30**: Security remediation – upgraded Artillery to **2.0.26**, pinned `base-x@3.0.11` via npm overrides, and verified `npm audit` / `npm run security` complete with 0 vulnerabilities.
-
-### 📈 Observed during latest testnet run
-- ~90% of HTTP 500 responses map to on-chain panics: `Smart contract panicked: The account <receiver> is not registered`. Register recipients or enable `storage_deposit` before issuing transfers to avoid this.
-- RPC-side pressure showed up as **ETIMEDOUT/ECONNRESET** errors (FastNEAR rate limiting). Mitigate by staggering arrival rate, adding secondary RPC URLs, or upgrading the FastNEAR quota.
-
-### ⚙️ High-level lifecycle
-1. **Contract build & deploy** – Compile the NEP-141 contract (Rust 1.80) and publish to `posm.testnet`.
-2. **Service bootstrap** – `npm run build && npm run start:testnet` loads `.env.testnet`, initialises NEAR connections, and exposes `POST /send-ft`.
-3. **Benchmark execution** – `./run-artillery-test.sh testnet` performs a health check, drives the configured Artillery phases, and generates JSON/HTML reports.
-4. **Review & iterate** – Inspect `server.log` / console for structured error logs and correlate with the Artillery report to tune storage registration, RPC quotas, and queue limits.
-
-## Performance Snapshot (2025-09-29)
-
-| Environment | Status | Key metrics | Notes |
-|-------------|--------|-------------|-------|
-| **Testnet** | ✅ Stable | 127 TPS avg · 200 TPS peak · 19,400 requests · 0% failures | Artillery run on 2025-09-28 validated queue-based architecture against FastNEAR RPC. |
-| **Sandbox** | ⚠️ Needs tuning | 139/172 successes · 33× HTTP 500 · 23,455 timeouts · median latency 3.03 s | High arrival rates (5→200 rps) saturated the local stack on 2025-09-29; see remediation plan below. |
-
-### Testnet highlights
-- Sustained the 100+ TPS requirement with ample headroom (average 127 TPS, peak 200 TPS).
-- All responses returned expected validation errors (HTTP 400) while blockchain submissions succeeded.
-- Queue-based workers (five concurrent) and FastNEAR RPC combination remained stable throughout the run.
-
-### Sandbox findings
-- Artillery completed only 0.60% of scenarios before timing out; the current profile overwhelms the local sandbox.
-- HTTP 500 responses combine NEAR panics for unregistered receivers and back-pressure once the queue is saturated.
-- Next iteration: down-shift arrival rates to ~40–60 rps, capture queue depth metrics, and keep storage deposits pre-registered.
-
-Further details and raw artifacts live in [`ARTILLERY_SANDBOX_RESULTS.md`](ARTILLERY_SANDBOX_RESULTS.md) and [`ARTILLERY_TESTNET_RESULTS.md`](ARTILLERY_TESTNET_RESULTS.md).
-
-## Project Structure
-
-```
-src/
-├── index.ts          # Main Express.js application with API endpoints
-├── near.ts           # NEAR blockchain connection and transaction management
-├── near-utils.ts     # Cross-API compatibility helpers
-├── config.ts         # Environment configuration management
-├── polyfills.ts      # Node.js crypto polyfills for compatibility
-├── config.sandbox.ts # Sandbox-specific configuration
-├── queue.ts          # Queue-based job processing system
-├── worker.ts         # Background worker for processing transfers
-├── run-worker.ts     # Worker process launcher
-├── benchmark.ts      # Load testing utilities
-├── test-sandbox.ts   # Sandbox testing utilities
-└── test-testnet.ts   # Testnet testing utilities
-
-ci/                           # Deployment and testing scripts
-├── deploy-sandbox-rpc.mjs    # Sandbox contract deployment
-├── assert-receiver-balance.mjs # Balance verification
-└── run-local-sandbox.sh      # Local sandbox setup
-
-benchmark.yml                 # Artillery load testing configuration
-artillery-local.yml           # Local testing configuration
-run-artillery-test.sh         # Artillery test runner script
-test-complete-pipeline.sh     # Complete automated testing pipeline
-.env.example                  # Environment configuration template
-```
-
-## Getting Started
-
-### Automated pipeline (recommended)
+Install dependencies once:
 
 ```bash
-./test-complete-pipeline.sh
-# Optional overrides
-TEST_DURATION=600 MAX_TPS=200 ./test-complete-pipeline.sh
+npm install
 ```
 
-The script boots the sandbox, deploys the FT contract, prepares receiver accounts, runs functional checks, executes the Artillery scenario, and emits JSON/HTML reports.
+---
 
-### Manual sandbox workflow
-1. `npm install` (Artillery 2.x is available via `npx artillery`; ensure you're on Node.js 20+ for undici File support).
-2. Copy `.env.example` to `.env`; set `MASTER_ACCOUNT_PRIVATE_KEY` for the sandbox master account.
-3. Deploy and bootstrap locally:
-  ```bash
-  node ci/deploy-sandbox-rpc.mjs
-  node ci/bootstrap-sandbox-accounts.mjs
-  npm run start:sandbox
-  ```
-4. Run targeted checks as needed:
-  ```bash
-  curl http://127.0.0.1:3000/health
-  ./run-artillery-test.sh sandbox
-  ```
+## 3. Environment files & key management
 
-### Manual testnet workflow
-1. Copy `.env.example` to `.env.testnet` and fill in `MASTER_ACCOUNT`, `MASTER_ACCOUNT_PRIVATE_KEY`, and `FT_CONTRACT`.
-2. Start the API against testnet RPC:
-  ```bash
-  npm run start:testnet
-  ```
-3. Execute integration or load tests:
-  ```bash
-  npm run test:testnet
-  ./run-artillery-test.sh testnet
-  ```
+### 3.1 Files
 
-## API Reference
+| File | Purpose |
+| --- | --- |
+| `.env` | Local sandbox configuration (starter account, multi-key pool, worker count). |
+| `.env.testnet` | Public testnet configuration. |
+| `.env.example` | Template—copy and adjust for new environments. |
 
-### POST `/send-ft`
+### 3.2 Sandbox master account setup
 
-Transfer NEP-141 fungible tokens to a recipient account.
+> Quick start: `.env.example` already contains the shared sandbox signer `service.test.near` and its key pool. Import that file as-is to get running immediately. Follow the steps below only if you need to recreate or rotate the sandbox account.
 
-**Request:**
-```json
-{
-  "receiverId": "user.testnet",
-  "amount": "1000000",
-  "memo": "Optional transfer memo"
-}
-```
+1. **Boot the sandbox node**
+    ```bash
+    npx near-sandbox init
+    npx near-sandbox run
+    ```
+    Leave the node running in a separate shell.
+2. **Create a dedicated signer account** (example: `service.test.near`). Use either:
+    - **near-cli** (v3+):
+       ```bash
+       near account create service.test.near \
+          --useFunder test.near \
+          --initialBalance 50 \
+          --networkId sandbox \
+          --nodeUrl http://127.0.0.1:3030
+       ```
+    - **Inline Node script** (requires `near-api-js` already installed via `npm install`):
+       ```bash
+       node - <<'NODE'
+       const { connect, keyStores, utils } = require("near-api-js");
+       const networkId = "sandbox";
+       const nodeUrl = "http://127.0.0.1:3030";
+       const rootAccountId = "test.near";
+       const newAccountId = "service.test.near"; // adjust as needed
+       const initialDeposit = utils.format.parseNearAmount("50");
+       (async () => {
+          const keyStore = new keyStores.UnencryptedFileSystemKeyStore(`${process.env.HOME}/.near-credentials`);
+          const near = await connect({ networkId, nodeUrl, keyStore });
+          const root = await near.account(rootAccountId);
+          const keyPair = utils.KeyPair.fromRandom("ed25519");
+          await keyStore.setKey(networkId, newAccountId, keyPair);
+          await root.createAccount(newAccountId, keyPair.getPublicKey(), initialDeposit);
+          console.log(`Account: ${newAccountId}`);
+          console.log(`Private key: ${keyPair.secretKey}`);
+       })();
+       NODE
+       ```
+       The default sandbox `test.near` key is stored in `~/.near-credentials/sandbox/test.near.json` after running `near-sandbox init`.
+3. **Update `.env`** with the newly created account:
+    - `MASTER_ACCOUNT=service.test.near`
+    - `MASTER_ACCOUNT_PRIVATE_KEY=<primary secret key>`
+    - `MASTER_ACCOUNT_PRIVATE_KEYS=<comma-separated list>`
+   - Optional for hosted RPCs: set `SANDBOX_RPC_URL` and `SANDBOX_API_KEY` if your sandbox endpoint requires authentication.
 
-**Response (Success):**
-```json
-{
-  "success": true,
-  "transactionHash": "ABC123...",
-  "receiverId": "user.testnet",
-  "amount": "1000000"
-}
-```
+### 3.3 Rotating sandbox access keys
 
-**Response (Error):**
-```json
-{
-  "error": "Error description",
-  "details": "Additional error information"
-}
-```
-
-**Endpoint Status: ✅ VALIDATED**
-- API endpoint responds correctly
-- Request validation working properly
-- Transaction signing and submission functional
-- Proper error handling for invalid requests
-- Ready for frontend integration
-
-### GET `/health`
-
-Service health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-09-27T16:24:07.372Z"
-}
-```
-
-## Architecture
-
-### High-Performance Design
-
-The service achieves **127 TPS average (200 TPS peak)** through optimized architecture:
-
-#### 1. **Queue-Based Processing**
-- Asynchronous job queue with Bull
-- 5 concurrent workers processing transfers
-- Prevents nonce conflicts and rate limiting
-
-#### 2. **Optimized Transaction Signing**
-- Uses `@eclipseeer/near-api-ts` for efficient nonce management
-- Access key rotation for concurrent transactions
-- Memory-cached key pairs for fast signing
-
-#### 3. **Connection Pool Management**
-- 50,000 max connections with keep-alive
-- RPC provider load balancing
-- Connection reuse for reduced latency
-
-#### 4. **Concurrent Worker Architecture**
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Server    │───▶│     Queue       │───▶│   Workers       │
-│   (Express)     │    │     (Bull)      │    │   (5 processes) │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Request        │    │  Job Queue      │    │  NEAR Network   │
-│  Validation     │    │  Management     │    │  Transactions   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-### Performance Optimizations
-
-- **Batch Processing**: Multiple transfers per transaction when possible
-- **Connection Pooling**: Persistent connections to RPC providers
-- **Memory Caching**: Access key nonces cached in memory
-- **Worker Isolation**: Separate processes prevent blocking
-- **Error Recovery**: Automatic retry with exponential backoff
-
-## Testing & Load
-
-### 🌐 Integration summary
-
-| Environment | Command | Latest Result | Key Fixes & Notes |
-|-------------|---------|---------------|-------------------|
-| **Browser UI (mocked)** | `npm run test:frontend` | ✅ Playwright drives the sample frontend, stubbing `/send-ft` & `/health` responses. | • Verifies request payload formatting and response rendering.<br>• Ensures the static UI stays functional while new backend features ship.<br>• Runs headless by default; add `:headed` suffix for visual debugging. |
-| **Testnet** | `npm run test:testnet` | ✅ `src/test-testnet.ts` boots the API, performs a `/send-ft` transfer, waits for final NEAR RPC confirmation, and verifies the balance increase on-chain. | • Added automatic NEP-145 storage deposits when the receiver is missing.<br>• Forced `WAIT_UNTIL=Final` to avoid optimistic RPC reads.<br>• Switched balance polling to raw RPC queries to dodge cached client state. |
-| **Sandbox** | `npm run test:sandbox` | ✅ near-workspaces spins up a fresh chain, deploys `fungible_token.wasm`, runs three `/send-ft` calls, and confirms the on-chain balance delta (3/3 success). | • Replaced hard-coded `127.0.0.1:3030` with the dynamic RPC URL emitted by near-workspaces.<br>• Injected the sandbox master key from the freshly created account.<br>• Re-enabled storage checks so the worker issues deposits when needed.<br>• Updated log matching so the test recognises “Server ready to accept requests”. |
-
-**Outputs:**
-- Testnet run (2025-09-29 04:45 UTC) increased the receiver balance by the requested transfer amount and exited with `0` after the health check.
-- Sandbox run (2025-09-29 04:54 UTC) transferred `4.5e6` yocto tokens cumulatively, leaving the user account at `4,500,000` yocto and the master at `999999999999999995500000` yocto.
-- Frontend suite (`npm run test:frontend`) is documented along with the full testing pyramid in [`docs/testing.md`](docs/testing.md).
-
-Refer to the console logs in `npm run test:testnet` and `npm run test:sandbox` for the full transaction receipts, including storage deposit diagnostics and action breakdowns. CI workflow details (including sandbox integration) live in [`docs/ci.md`](docs/ci.md).
-git clone https://github.com/Psianturi/near-ft-helper.git
-### Load testing commands
+Add extra keys so each worker can sign independently:
 
 ```bash
-# Sandbox performance run (requires local API service)
-./run-artillery-test.sh sandbox
-
-# Testnet performance run (local API service pointing to testnet RPC)
-./run-artillery-test.sh testnet
-
-# Raw Artillery usage
-npx artillery run benchmark.yml --output results.json
-npx artillery report results.json --output report.html
+node - <<'NODE'
+const { connect, keyStores, utils } = require("near-api-js");
+const networkId = "sandbox";
+const nodeUrl = process.env.NODE_URL || "http://127.0.0.1:3030";
+const accountId = process.env.MASTER_ACCOUNT;
+const primaryKey = process.env.MASTER_ACCOUNT_PRIVATE_KEY;
+(async () => {
+   if (!accountId || !primaryKey) {
+      throw new Error("Set MASTER_ACCOUNT and MASTER_ACCOUNT_PRIVATE_KEY in your environment before running this script.");
+   }
+   const keyStore = new keyStores.InMemoryKeyStore();
+   await keyStore.setKey(networkId, accountId, utils.KeyPair.fromString(primaryKey));
+   const near = await connect({ networkId, nodeUrl, keyStore });
+   const account = await near.account(accountId);
+   for (let i = 0; i < 2; i++) {
+      const kp = utils.KeyPair.fromRandom("ed25519");
+      await account.addKey(kp.getPublicKey());
+      console.log(kp.secretKey);
+   }
+})();
+NODE
 ```
 
-GitHub Actions continues to cover testnet integration on every push; performance exercises remain manual due to duration.
+Append each printed key to `MASTER_ACCOUNT_PRIVATE_KEYS` (comma-separated) so the worker pool can rotate signers.
 
-### Health checks
+### 3.4 Testnet keys
 
-```bash
-curl http://127.0.0.1:3000/health
-```
+- Use an existing funded testnet account (e.g., `posm.testnet`) or deploy the helper suite in [`near-ft-helper`](../near-ft-helper/).
+- Create additional access keys via `near account add-key ...` or NEAR Wallet for higher throughput.
+- Populate `.env.testnet` with:
+   - `MASTER_ACCOUNT`
+   - `MASTER_ACCOUNT_PRIVATE_KEY(S)`
+   - `FT_CONTRACT`
+   - Optional `FASTNEAR_API_KEY` if using the FastNEAR RPC.
+- Store credentials under `~/.near-credentials/testnet/` and never commit them.
 
-Use this to verify the API before kicking off load tests.
+---
 
-## Troubleshooting
+## 4. Sandbox runbook
 
-### Common Issues
+Use this flow whenever a fresh sandbox test is required.
 
-#### High Error Rates
-**Symptom**: Many 400/500 responses during load testing
-**Cause**: SDK compatibility issues or RPC provider limits
-**Solution**: Use testnet environment or check RPC provider quotas
-
-#### Slow Response Times
-**Symptom**: Response times > 5 seconds
-**Cause**: Network latency or RPC provider congestion
-**Solution**: Switch to FastNEAR or add RPC provider load balancing
-
-#### Nonce Conflicts
-**Symptom**: "Invalid nonce" errors
-**Cause**: Concurrent transactions using same access key
-**Solution**: Increase `WORKER_COUNT` or use multiple access keys
-
-#### Memory Issues
-**Symptom**: Service crashes under load
-**Cause**: Insufficient memory for concurrent workers
-**Solution**: Increase server memory or reduce `CONCURRENCY_LIMIT`
-
-### Debug Mode
+### Step 1 — Deploy the FT contract
 
 ```bash
-# Enable debug logging
-DEBUG=* npm run start:testnet
-
-# Check service logs
-tail -f api.log
-
-# Monitor PM2 processes
-pm2 monit
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-
-
-### Sandbox Testing (Local Development)
-
-#### Option 1: Complete Automated Pipeline (Recommended)
-```bash
-# Full testing pipeline with sandbox, contract, and load testing
-./test-complete-pipeline.sh
-
-# Custom configuration
-TEST_DURATION=600 MAX_TPS=200 ./test-complete-pipeline.sh
-```
-
-#### Option 2: Manual Setup
-```bash
-# 1. Start NEAR sandbox
-npx near-sandbox init
-npx near-sandbox run &
-
-# 2. Deploy FT contract (if needed)
-export NEAR_CONTRACT_ACCOUNT_ID="test.near"
-export NEAR_SIGNER_ACCOUNT_ID="test.near"
-export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY="ed25519:..."
+set -a && source .env && set +a
+export NEAR_SIGNER_ACCOUNT_ID=$MASTER_ACCOUNT
+export NEAR_CONTRACT_ACCOUNT_ID=$FT_CONTRACT
+export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY=$MASTER_ACCOUNT_PRIVATE_KEY
 node ci/deploy-sandbox-rpc.mjs
+```
 
-# 3. Start API service
-npm run start:sandbox
+### Step 2 — Bootstrap receivers (subaccounts)
 
-# 4. Run load testing
+```bash
+export SANDBOX_RECEIVER_LIST="user1.${MASTER_ACCOUNT},user2.${MASTER_ACCOUNT},user3.${MASTER_ACCOUNT}"
+node ci/bootstrap-sandbox-accounts.mjs
+```
+This creates subaccounts and registers FT storage deposits.
+
+### Step 3 — Launch API & worker pool
+
+```bash
+npm run start:sandbox > service-local.log 2>&1 &
+npm run run:worker:sandbox > worker-local.log 2>&1 &
+```
+- Adjust `WORKER_COUNT` in `.env` (default 8 after the latest tuning).
+- Health check: `curl http://127.0.0.1:3000/health`.
+- Smoke transfer:
+  ```bash
+  curl -X POST http://127.0.0.1:3000/send-ft \
+    -H 'Content-Type: application/json' \
+    -d '{"receiverId":"user1.'"${MASTER_ACCOUNT}"'","amount":"1000000"}'
+  ```
+
+### Step 4 — Load test
+
+```bash
 ./run-artillery-test.sh sandbox
 ```
+Artifacts land in `artillery-results-sandbox-*.json` and `artillery-report-sandbox-*.html`.
 
-### Testnet Testing (Production Environment)
-```bash
-# 1. Setup NEAR testnet account
-# Create account at https://wallet.testnet.near.org/
-# Fund with NEAR tokens for gas fees
+▶️ **Shortcut**: `./test-complete-pipeline.sh` chains Steps 1–4 automatically for a fresh sandbox smoke + load run.
 
-# 2. Deploy FT contract to testnet
-git clone https://github.com/Psianturi/near-ft-helper.git
-cd near-ft-helper && npm install
-node deploy-testnet.js  # Requires MASTER_ACCOUNT_PRIVATE_KEY in .env
+**Observed 2025-10-01 (8 workers, 3 keys):**
+- Total requests: 13,950; HTTP 200: 39; timeouts: 13,455.
+- Average RPS: 71 (below the 100 TPS goal).
+- Errors dominated by `nonce retries exceeded` (3,783 occurrences) and FT panics when subaccounts ran out of tokens.
 
-# 3. Configure service for testnet
-cp .env.example .env
-# Edit .env with your testnet account details
-npm run start:testnet
+**Mitigations to try next:**
+- Increase `MASTER_ACCOUNT_PRIVATE_KEYS` pool (one key per worker).
+- Lower Artillery phases (e.g., cap at 40 rps) or stagger with `arrivalCount` blocks.
+- Refill `service.test.near` and receivers (FT burn from failed deposits drains balances).
+- Enable `SKIP_STORAGE_CHECK=false` only if receivers are pre-registered.
 
-# 5. Run load testing
-./run-artillery-test.sh testnet
+---
 
-# 6. Test single transfer
-curl -X POST http://localhost:3000/send-ft \
-  -H "Content-Type: application/json" \
-  -d '{"receiverId": "receiver.testnet", "amount": "1000000"}'
-```
+## 5. Benchmark status
 
-## Operations & Deployment
+| Date | Environment | Worker count | Key pool | Avg RPS | Success % | Major errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2025-10-01 | Sandbox | 8 | 3 keys | 71 | 0.28% | Nonce retries, FT insufficient balance |
+| 2025-10-01 | Sandbox | 5 | 1 key | 43 | 0.93% | Nonce retries, FT insufficient balance |
+| 2025-09-28 | Testnet | 5 | 4 keys | 127 | ~100% | Stable (uses FastNEAR RPC) |
 
-### Environment variables
-- `NEAR_ENV` – `sandbox` or `testnet`
-- `MASTER_ACCOUNT` / `MASTER_ACCOUNT_PRIVATE_KEY` – signer credentials (ed25519 key expected)
-- `FT_CONTRACT` – NEP-141 contract account ID
-- `RPC_URLS` (optional) – comma-separated RPC endpoints for failover
-- `FASTNEAR_API_KEY` (optional) – unlocks higher FastNEAR rate limits
-- `CONCURRENCY_LIMIT`, `WORKER_COUNT`, `SKIP_STORAGE_CHECK` – tune throughput and storage behaviour
+Benchmark scripts live in `benchmark-sandbox.yml`, `benchmark-testnet.yml`, and `run-artillery-test.sh`.
 
-### Start & run
-```bash
-npm run start:sandbox   # local development
-npm run start:testnet   # production testing
+---
 
-npm run build
-npm start               # run compiled output
-```
+## 6. Testnet runbook
 
-### Operational tooling
-- **PM2**: `pm2 start dist/index.js --name ft-api-service` then `pm2 save` for restart persistence.
-- **Docker** (optional):
-  ```dockerfile
-  FROM node:23-alpine
-  WORKDIR /app
-  COPY package*.json ./
-  RUN npm ci --only=production
-  COPY dist/ ./dist/
-  EXPOSE 3000
-  CMD ["node", "dist/index.js"]
-  ```
-- **Load balancing**: terminate TLS and fan out to multiple instances via nginx/HAProxy when scaling horizontally.
+1. Copy `.env.example` → `.env.testnet` and fill in:
+   - `MASTER_ACCOUNT=posm.testnet` (or your own)
+   - `MASTER_ACCOUNT_PRIVATE_KEY(S)`
+   - `FT_CONTRACT` (contract owner)
+   - Optional: `FASTNEAR_API_KEY`
+2. Start the API & worker:
+   ```bash
+   npm run start:testnet > service.log 2>&1 &
+   npm run run:worker:testnet > worker.log 2>&1 &
+   ```
+3. Verify:
+   ```bash
+   curl http://127.0.0.1:3000/health
+   curl -X POST http://127.0.0.1:3000/send-ft \
+     -H 'Content-Type: application/json' \
+     -d '{"receiverId":"receiver.testnet","amount":"1000000"}'
+   ```
+4. Load test:
+   ```bash
+   ./run-artillery-test.sh testnet
+   ```
+   Ensure RPC quotas are large enough or add secondary `RPC_URLS` for failover.
 
-## Troubleshooting
+---
 
-### Common Issues
+## 7. Troubleshooting checklist
 
-#### "The account doesn't have enough balance"
-- **Cause**: FT contract lacks tokens for transfers
-- **Solution**: Mint additional tokens to the master account or top-up contract balance
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `no matching key pair` | `MASTER_ACCOUNT_PRIVATE_KEY` missing/incorrect | Regenerate key (`near account add-key`), update `.env`. |
+| `nonce retries exceeded` | Too many parallel tx on one key | Add more keys, lower arrival rate, or increase retry backoff. |
+| `The account doesn't have enough balance` | FT contract drained | Mint more tokens or throttle storage deposits. |
+| `errors.ETIMEDOUT` / `errors.ECONNRESET` | RPC saturation | Add RPC endpoints, reduce load, or slow ramp-up. |
+| `Smart contract panicked: account not registered` | Receiver missing storage deposit | Ensure `bootstrap-sandbox-accounts.mjs` ran or enable `SKIP_STORAGE_CHECK=false`. |
 
-#### "Can not sign transactions for account... no matching key pair"
-- **Cause**: Invalid or incorrect private key in `.env`
-- **Solution**: Verify private key format and account ownership
+Logs:
+- API: `tail -f service-local.log`
+- Workers: `tail -f worker-local.log`
+- Sandbox node: `tail -f sandbox.log`
 
-#### RPC Connection Issues
-- **Cause**: Network connectivity or RPC provider issues
-- **Solution**: Check internet connection and try different RPC providers
+---
 
-#### ZodError or parsing errors
-- **Cause**: RPC response format incompatibility
-- **Solution**: Use NEAR official RPC for testnet (`https://rpc.testnet.near.org`)
+## 8. Script reference
 
-#### "Expected string not undefined(undefined) at value.signerId" (Sandbox)
-- **Cause**: ES module global state conflicts with near-workspaces programmatic usage
-- **Solution**: This is a known limitation. Use testnet environment instead:
-  ```bash
-  # Switch to testnet
-  export NEAR_ENV=testnet
-  npm start
-  ```
-- **Note**: Manual near-cli commands work fine, but programmatic API calls fail in sandbox mode
+### 8.1 Shell helpers (`.sh`)
 
-#### "Error happened while deserializing the module" (Contract Deployment)
-- **Cause**: NEAR runtime 2.6.5 incompatibility with SDK 5.x compiled contracts
-- **Solution**: Use testnet environment for production testing:
-  ```bash
-  # Deploy contract to testnet first
-  cd near-ft-helper && node deploy-testnet.js
+| Script | Command to run | Purpose |
+| --- | --- | --- |
+| `run-artillery-test.sh` | `./run-artillery-test.sh sandbox` | Execute the sandbox Artillery scenario and save JSON/HTML reports under `artillery-results-sandbox-*`. |
+|  | `./run-artillery-test.sh testnet` | Execute the testnet Artillery scenario (ensure RPC quotas and FastNEAR key). |
+| `test-complete-pipeline.sh` | `./test-complete-pipeline.sh` | End-to-end pipeline: deploy sandbox contract, bootstrap receivers, run smoke tests, then trigger the sandbox Artillery profile. |
+| `ci/run-local-sandbox.sh` | `./ci/run-local-sandbox.sh` | Spin up a local sandbox node plus helper processes (used by CI, also handy for local bring-up). |
+| `Artillery CLI` | `npx artillery report <json> --output report.html` | Convert saved JSON output into an HTML report for sharing. |
 
-  # Then test with real blockchain
-  NEAR_ENV=testnet npm start
-  ```
-- **Note**: This is a fundamental version compatibility issue between sandbox runtime and modern SDK
+> All shell scripts live at the repo root. Run `chmod +x *.sh` once if your checkout stripped executable bits.
 
-### Debug Mode
+### 8.2 Node/npm scripts
 
-```bash
-# Enable debug logging
-DEBUG=* npm run start:testnet
+| Command | Purpose |
+| --- | --- |
+| `npm run start:sandbox` | Start API in sandbox mode (reads `.env`). |
+| `npm run run:worker:sandbox` | Launch Bull worker processing queue jobs. |
+| `node ci/deploy-sandbox-rpc.mjs` | Deploy and initialise the FT contract on the sandbox RPC. |
+| `node ci/bootstrap-sandbox-accounts.mjs` | Create receiver subaccounts and submit storage deposits. |
+| `npm run start:testnet` / `npm run run:worker:testnet` | Testnet equivalents reading `.env.testnet`. |
+| `npm run test:sandbox` / `npm run test:testnet` | near-workspaces smoke suites for each environment. |
+| `npm run typecheck` / `npm run build` | TypeScript project validation and compilation. |
 
-# Check service logs
-tail -f api.log
+---
 
-# Monitor PM2 processes
-pm2 monit
-```
+## 9. Account & subaccount tutorial
 
-## Security Notes
+### 9.1 Sandbox walkthrough
 
-- **No authentication implemented** (designed for internal use)
-- **Dependency hygiene**: `npm run security` (audit-ci) and `npm audit` now complete with 0 vulnerabilities after pinning `base-x@3.0.11` via npm overrides and upgrading Artillery to 2.0.26.
-- **Private keys must be valid NEAR ed25519 keys** (64-byte binary format)
-  - The sample keys in `.env` are placeholders and will cause validation errors
-  - Replace with actual NEAR account private keys for production use
-  - Error: `Length of binary ed25519 private key should be 64` indicates invalid key format
-- Store private keys securely in environment variables
-- Consider adding rate limiting for production deployment
+1. **Obtain the root sandbox key** – after `npx near-sandbox init`, the key for `test.near` is stored in `~/.near-credentials/sandbox/test.near.json`.
+2. **Create a new master account** (example: `service.test.near`). Choose either path:
+   - near-cli:
+     ```bash
+     near account create service.test.near \
+       --useFunder test.near \
+       --initialBalance 50 \
+       --networkId sandbox \
+       --nodeUrl http://127.0.0.1:3030
+     ```
+   - Inline Node script (see [§3.2](#32-sandbox-master-account-setup)).
+3. **Add worker keys** – run the rotation script in [§3.3](#33-rotating-sandbox-access-keys) until you have one key per worker, then paste them into `MASTER_ACCOUNT_PRIVATE_KEYS`.
+4. **Create receiver subaccounts** (manual alternative to `bootstrap-sandbox-accounts.mjs`):
+   ```bash
+   export MASTER_ACCOUNT=service.test.near
+   export NETWORK_OPTS="--networkId sandbox --nodeUrl http://127.0.0.1:3030"
 
+   near account create user1.service.test.near --useFunder $MASTER_ACCOUNT --initialBalance 5 $NETWORK_OPTS
+   near account create user2.service.test.near --useFunder $MASTER_ACCOUNT --initialBalance 5 $NETWORK_OPTS
+   near account create user3.service.test.near --useFunder $MASTER_ACCOUNT --initialBalance 5 $NETWORK_OPTS
 
-## License
+   near call $FT_CONTRACT storage_deposit '{"account_id":"user1.service.test.near"}' --amount 0.00125 --accountId $MASTER_ACCOUNT $NETWORK_OPTS
+   near call $FT_CONTRACT storage_deposit '{"account_id":"user2.service.test.near"}' --amount 0.00125 --accountId $MASTER_ACCOUNT $NETWORK_OPTS
+   near call $FT_CONTRACT storage_deposit '{"account_id":"user3.service.test.near"}' --amount 0.00125 --accountId $MASTER_ACCOUNT $NETWORK_OPTS
+   ```
+5. **Mint tokens for testing** (if receivers need balances):
+   ```bash
+   near call $FT_CONTRACT ft_mint '{"account_id":"service.test.near","amount":"1000000000000"}' \
+     --accountId $MASTER_ACCOUNT --amount 0 --gas 300000000000000 $NETWORK_OPTS
+   ```
 
-MIT License - see LICENSE file for details
+### 9.2 Testnet pointers
+
+1. Create or pick a funded account on https://wallet.testnet.near.org/ (e.g., `posm.testnet`).
+2. Export its private key via NEAR Wallet **or** `near account export posm.testnet --networkId testnet` and place it in `~/.near-credentials/testnet/`.
+3. Create worker access keys (generate fresh key pairs with `near generate-key <alias> --networkId testnet`, then add the public key to the account):
+   ```bash
+   near account add-key posm.testnet --networkId testnet --publicKey <ed25519:...>
+   ```
+   Repeat for as many workers as you plan to run.
+4. Create receiver accounts (subaccounts or standalone) and register storage:
+   ```bash
+   near account create receiver1.posm.testnet --useFunder posm.testnet --initialBalance 5 --networkId testnet
+   near call $FT_CONTRACT storage_deposit '{"account_id":"receiver1.posm.testnet"}' --amount 0.00125 --accountId posm.testnet --networkId testnet
+   ```
+5. Update `.env.testnet` with the new keys and the deployed FT contract ID before launching the service.
+
+---
+
+## 10. License
+
+MIT – see [LICENSE](./LICENSE).
