@@ -16,16 +16,17 @@ A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfer
 | Config file | `.env` | `.env.testnet` |
 | Entry point | `npm run start:sandbox` | `npm run start:testnet` |
 | Worker runner | `npm run run:worker:sandbox` | `npm run run:worker:testnet` |
+| Cluster launcher | `npm run start:sandbox:cluster` (auto CPU count, toggle via `SANDBOX_USE_CLUSTER`) | `npm run start:testnet:cluster` (optional) |
 | Load test | `./testing/artillery/run-artillery-test.sh sandbox` | `./testing/artillery/run-artillery-test.sh testnet` |
-| Latest load snapshot (2025-10-01) | 158 / 25,800 requests OK (0.6 %), 93 RPS avg, nonce contention & storage deposit races | 127 TPS avg (2025-09-28 run), requires FastNEAR RPC |
+| Latest load snapshot (2025-10-01) | 186 / 25,800 requests OK (0.7 %), 93 RPS avg, ETIMEDOUT & nonce contention from single signer | 127 TPS avg (2025-09-28 run), requires FastNEAR RPC |
 
-🔔 **Key insight**: the sandbox still struggles once arrival rates exceed what a single signer key can handle. Expect “nonce retries exceeded” and “account doesn’t have enough balance” around the 25k-request mark even after pre-registering receivers. The pipeline now auto-bootstraps receivers, but we still need a larger key pool (one key per worker) to cross the 60k-transfer goal—see [§5 Benchmark status](#5-benchmark-status) for the latest metrics & mitigation plan.
+🔔 **Key insight**: the sandbox still struggles once arrival rates exceed what a single signer key can handle. Expect “nonce retries exceeded” and “account doesn’t have enough balance” around the 25k-request mark even after pre-registering receivers. The pipeline now launches the API in cluster mode by default and batches all `/send-ft` `transfers[]` into a single on-chain transaction, but we still need a larger key pool (one key per worker) to cross the 60k-transfer goal—see [§5 Benchmark status](#5-benchmark-status) for the latest metrics & mitigation plan.
 
 ---
 
 ## 2. Requirements
 
-- Node.js ≥ 20 (Node 24 recommended; Artillery 2.x hyperdrive phase requires Node ≥ 22.13 for local execution)
+- Node.js ≥ 22.13 for load testing (Node 24 recommended; the service itself still runs on ≥18 but Artillery 2.x enforces ≥22.13)
 - npm ≥ 9
 - Rust toolchain (if rebuilding `fungible_token.wasm`)
 - NEAR Sandbox (`npx near-sandbox`) for local runs
@@ -126,6 +127,8 @@ NODE
 
 Append each printed key to `MASTER_ACCOUNT_PRIVATE_KEYS` (comma-separated) so the worker pool can rotate signers.
 
+> ℹ️ The service now round-robins every request across the keys listed in `MASTER_ACCOUNT_PRIVATE_KEYS` (sandbox and testnet). Keep the pool size aligned with active workers to minimise nonce contention.
+
 ### 3.4 Testnet keys
 
 - Use an existing funded testnet account (e.g., `posm.testnet`) or deploy the helper suite in [`near-ft-helper`](../near-ft-helper/).
@@ -164,21 +167,23 @@ This creates subaccounts and registers FT storage deposits.
 ### Step 3 — Launch API & worker pool
 
 ```bash
-npm run start:sandbox > service-local.log 2>&1 &
+SANDBOX_CLUSTER_WORKERS=0 npm run start:sandbox:cluster > service-local.log 2>&1 &
 npm run run:worker:sandbox > worker-local.log 2>&1 &
 ```
+- `SANDBOX_CLUSTER_WORKERS=0` lets the launcher pick `availableParallelism()` automatically. Override with an explicit value (e.g. `CLUSTER_WORKERS=6`) or set `SANDBOX_USE_CLUSTER=0` to fall back to the single-process server for comparison.
 - Adjust `WORKER_COUNT` in `.env` (default 8 after the latest tuning).
+- Provide one access key per worker in `MASTER_ACCOUNT_PRIVATE_KEYS`; the API rotates through them automatically on each transaction.
 - Health check: `curl http://127.0.0.1:3000/health`.
-- Smoke transfer:
-  ```bash
-  curl -X POST http://127.0.0.1:3000/send-ft \
-    -H 'Content-Type: application/json' \
-    -d '{"receiverId":"user1.'"${MASTER_ACCOUNT}"'","amount":"1000000"}'
-  ```
+- Smoke transfer (`/send-ft` now batches any `transfers[]` payload into a single transaction):
+   ```bash
+   curl -X POST http://127.0.0.1:3000/send-ft \
+      -H 'Content-Type: application/json' \
+      -d '{"transfers":[{"receiverId":"user1.'"${MASTER_ACCOUNT}"'","amount":"1000000"},{"receiverId":"user2.'"${MASTER_ACCOUNT}"'","amount":"5000000"}]}'
+   ```
 
 ### Step 4 — Load test
 
-Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml` (expect roughly 12 minutes end-to-end).
+Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml`—the new warm-up+ramp adds ~3 minutes (plan for ~13 minutes end-to-end). Load hosts must run **Node.js ≥ 22.13** so Artillery 2.x can start without engine errors. The pipeline starts the API in cluster mode by default (`SANDBOX_USE_CLUSTER=1`); override `SANDBOX_CLUSTER_WORKERS` or disable clustering with `SANDBOX_USE_CLUSTER=0` when you need single-thread baselines.
 
 ```bash
 ./testing/artillery/run-artillery-test.sh sandbox
@@ -192,8 +197,7 @@ Artifacts (JSON statistics) are written under `testing/artillery/artillery-resul
 
 | Date | Environment | Worker count | Key pool | Avg RPS | Success % | Major errors |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2025-10-01 | Sandbox | 8 | 3 keys | 71 | 0.28% | Nonce retries, FT insufficient balance |
-| 2025-10-01 | Sandbox | 5 | 1 key | 93 | 0.61% | Nonce retries, FT insufficient balance, storage races |
+| 2025-10-01 | Sandbox (cluster auto, Node 18) | auto (~8) | 1 key | 93 | 0.72% | `errors.ETIMEDOUT`, `errors.ECONNRESET`, nonce retries |
 | 2025-10-01 | Testnet | 5 | 1 key | 93 | 0.43% | FastNEAR rate limiting (-429), RPC timeouts |
 
 ### 5.1 Roadmap to the 60k-transfer benchmark
@@ -202,9 +206,10 @@ Artifacts (JSON statistics) are written under `testing/artillery/artillery-resul
 - **Current bottleneck**: Sandbox runs saturate a single signer key—`nonce retries exceeded` dominates once 25k+ requests race for the same key, even after pre-registering receivers.
 - **Mitigation plan**:
    1. Expand the signer key pool (one access key per worker / ~20 TPS) and rotate them via `MASTER_ACCOUNT_PRIVATE_KEYS`.
-   2. Temporarily lower `CONCURRENCY_LIMIT`/`MAX_IN_FLIGHT` in `.env` so sandbox runs avoid nonce storms until rotation lands.
-   3. Rerun the 10-minute profile and confirm ≥ 60,000 `http.codes.200` successes; capture deltas under `test-results/` for posterity.
-   4. Apply the same key fan-out to testnet, pairing it with additional FastNEAR or RPC endpoints to maintain throughput without throttling.
+   2. Upgrade the load harness to Node 22+ and keep the new Artillery keep-alive/timeout settings so sockets aren’t churned under pressure.
+   3. Keep the API in cluster mode and favour batched `/send-ft` payloads so each transaction carries many transfers; temporarily lower `CONCURRENCY_LIMIT`/`MAX_IN_FLIGHT` in `.env` to avoid nonce storms until rotation lands.
+   4. Rerun the 10-minute profile and confirm ≥ 60,000 `http.codes.200` successes; capture deltas under `test-results/` for posterity.
+   5. Apply the same key fan-out to testnet, pairing it with additional FastNEAR or RPC endpoints to maintain throughput without throttling.
 
 Benchmark scripts live in `testing/artillery/benchmark-sandbox.yml`, `testing/artillery/benchmark-testnet.yml`, and `testing/artillery/run-artillery-test.sh`.
 
@@ -267,7 +272,7 @@ Logs:
 | `Artillery CLI` | `npx artillery report <json> --output report.html` | Convert saved JSON output into an HTML report for sharing. |
 
 > Shell utilities live under `testing/` (Artillery) and the repo root (`ci/`). Run `chmod +x testing/**/*.sh ci/*.sh` once if your checkout stripped executable bits.
-> The sandbox benchmark now includes a "Hyperdrive" phase (up to 600 TPS) inspired by [`omni-relayer-benchmark`](https://github.com/frolvanya/omni-relayer-benchmark). Trim that phase or point `ARTILLERY_CONFIG` to a copy if your machine or RPC cannot sustain it yet.
+> The sandbox benchmark now ships with an extended warm-up and ramp to reduce nonce spikes; clone the YAML if you need an even gentler profile or want to reintroduce aggressive surge phases.
 
 ### 8.2 Node/npm scripts
 

@@ -1,39 +1,61 @@
 config:
   target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 30          # seconds
+    pool: 100            # enable keep-alive / reuse sockets
+    maxSockets: 256
   phases:
-    # Warm-up phase
-    - duration: 30
-      arrivalRate: 10
-      name: "Warm-up"
-
-    # Ramp-up to target
+    # Extended warm-up so sandbox RPC can stabilise
     - duration: 60
-      arrivalRate: 20
-      rampTo: 80
-      name: "Ramp-up"
+      arrivalRate: 5
+      rampTo: 30
+      name: "Extended Warm-up"
 
-    # Sustained high load
-    - duration: 180
-      arrivalRate: 100
+    # Gradual ramp towards the configured target TPS
+    - duration: 120
+      arrivalRate: 30
       rampTo: 150
+      name: "Ramp to Target"
+
+    # Sustained load at TARGET for validation
+    - duration: 120
+      arrivalRate: 150
       name: "Sustained Load"
 
   variables:
     receiverId:
       - "user1.test.near"
       - "user2.test.near"
-      - "user3.test.near" 
+      - "user3.test.near"
       - "alice.test.near"
       - "bob.test.near"
-    
+
     amount:
       - "1000000000000000000000000"    # 1 token
       - "5000000000000000000000000"    # 5 tokens
       - "10000000000000000000000000"   # 10 tokens
 
 scenarios:
-  - name: "Single FT Transfer"
+  - name: "Batched FT Transfers"
     weight: 70
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch load test A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch load test B"
+          expect:
+            - statusCode: [200, 400, 500]
+
+  - name: "Single FT Transfer"
+    weight: 20
     flow:
       - post:
           url: "/send-ft"
@@ -44,27 +66,13 @@ scenarios:
             amount: "{{ amount }}"
             memo: "Load test {{ $timestamp }}"
           expect:
-            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors
+            - statusCode: [200, 400, 500]
 
   - name: "Health Check"
-    weight: 20
+    weight: 10
     flow:
       - get:
           url: "/health"
           expect:
             - statusCode: 200
 
-  - name: "Batch Transfer"
-    weight: 10
-    flow:
-      - post:
-          url: "/send-ft"
-          headers:
-            Content-Type: "application/json"
-          json:
-            transfers:
-              - receiverId: "{{ receiverId }}"
-                amount: "{{ amount }}"
-                memo: "Batch load test"
-          expect:
-            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors

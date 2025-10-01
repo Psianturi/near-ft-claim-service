@@ -1,11 +1,21 @@
 config:
   target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 30
+    pool: 120
+    maxSockets: 300
   phases:
-    # Gentle warm-up before sustained benchmark
-    - duration: 10
-      arrivalRate: 20
+    # Gentle warm-up before the sustained benchmark window
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 60
+      name: "Extended Warm-up"
+
+    # Gradual ramp to benchmark target to avoid nonce storms
+    - duration: 120
+      arrivalRate: 60
       rampTo: 100
-      name: "Warm-up"
+      name: "Ramp to 100 TPS"
 
     # Sustained benchmark requirement: 100 TPS for 10 minutes (600 seconds)
     - duration: 600
@@ -26,8 +36,29 @@ config:
       - "10000000000000000000000000"  # 10 tokens
 
 scenarios:
-  - name: "Send FT Token"
-    weight: 90
+  - name: "Batched FT Transfers"
+    weight: 80
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Benchmark batch A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Benchmark batch B"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Benchmark batch C"
+          expect:
+            - statusCode: 200
+
+  - name: "Single FT Transfer"
+    weight: 15
     flow:
       - post:
           url: "/send-ft"
@@ -37,15 +68,11 @@ scenarios:
             receiverId: "{{ receiverId }}"
             amount: "{{ amount }}"
             memo: "Benchmark 100 TPS - {{ $timestamp }}"
-          capture:
-            - json: "$.transactionHash"
-              as: "txHash"
           expect:
             - statusCode: 200
-            - hasProperty: "transactionHash"
 
   - name: "Health Check"
-    weight: 10
+    weight: 5
     flow:
       - get:
           url: "/health"

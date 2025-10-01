@@ -473,20 +473,35 @@ app.post('/send-ft', async (req: Request, res: Response) => {
     }
 
     // NEAR connection is initialized at server startup
-    let nearInterface = getNear();
+    const nearInterface = getNear();
 
     // Handle hybrid approach: different interfaces for different libraries
     let signer: any;
     let client: any;
     let account: any;
+    let sandboxKeyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
 
     if (process.env.NEAR_ENV === 'sandbox') {
-      // Use near-workspaces for sandbox
-      if (!nearInterface.account) {
+      if (typeof nearInterface?.getAccount === 'function') {
+        const sandboxCtx = nearInterface.getAccount();
+        account = sandboxCtx.account;
+        sandboxKeyMeta = {
+          publicKey: sandboxCtx.publicKey,
+          index: sandboxCtx.index,
+          poolSize: sandboxCtx.poolSize,
+        };
+      } else if (nearInterface?.account) {
+        account = nearInterface.account;
+      } else {
         return res.status(500).send({ error: 'Sandbox account not initialized' });
       }
-      account = nearInterface.account;
-      requestLog.debug({ accountId: account.accountId }, 'Sandbox account loaded');
+
+      requestLog.debug({
+        accountId: account.accountId,
+        publicKey: sandboxKeyMeta?.publicKey,
+        keyIndex: sandboxKeyMeta?.index,
+        keyPoolSize: sandboxKeyMeta?.poolSize,
+      }, 'Sandbox signer prepared');
       requestLog.debug({ contractId: config.ftContract }, 'Sandbox FT contract resolved');
     } else {
       // Use @eclipseeer/near-api-ts for testnet
@@ -615,13 +630,56 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       }),
     );
 
-    const actions: any[] = [...storageDepositActions, ...transferActions];
+    const apiTsActions: any[] = [...storageDepositActions, ...transferActions];
+
+    let nearJsActions: any[] = [];
+    if (account) {
+      const { transactions, utils } = await import('near-api-js');
+
+      const encodeArgs = (args: Record<string, unknown>) => Buffer.from(JSON.stringify(args));
+      const GAS = BigInt('30000000000000');
+      const toYoctoBigInt = (value: string) => {
+        if (/^\d+$/.test(value)) {
+          return BigInt(value);
+        }
+        const parsed = utils.format.parseNearAmount(value);
+        if (!parsed) {
+          throw new Error(`Unable to parse yocto value from ${value}`);
+        }
+        return BigInt(parsed);
+      };
+
+      const depositActions = depositsRequired.map((receiverId) =>
+        transactions.functionCall(
+          'storage_deposit',
+          encodeArgs({ account_id: receiverId, registration_only: true }),
+          GAS,
+          toYoctoBigInt(storageDepositAmount),
+        ),
+      );
+
+      const transferFunctionCalls = transferList.map((transfer) =>
+        transactions.functionCall(
+          'ft_transfer',
+          encodeArgs({
+            receiver_id: transfer.receiverId,
+            amount: transfer.amount,
+            memo: transfer.memo || '',
+          }),
+          GAS,
+          1n,
+        ),
+      );
+
+      nearJsActions = [...depositActions, ...transferFunctionCalls];
+    }
 
     requestLog.debug(
       {
         depositCount: storageDepositActions.length,
         transferCount: transferActions.length,
-        actionCount: actions.length,
+        actionCount: apiTsActions.length,
+        nearJsActionCount: nearJsActions.length,
       },
       'Prepared NEAR actions',
     );
@@ -630,47 +688,21 @@ app.post('/send-ft', async (req: Request, res: Response) => {
     let result: any;
 
     if (account) {
-      // Using near-api-js (sandbox RPC) - execute actions using functionCall
-      const results = [];
-
-      for (const receiverId of depositsRequired) {
-        requestLog.debug({ contractId: config.ftContract, receiverId }, 'Invoking storage_deposit via sandbox account');
-        const depositResult = await account.functionCall({
-          contractId: config.ftContract,
-          methodName: 'storage_deposit',
-          args: {
-            account_id: receiverId,
-            registration_only: true,
-          },
-          gas: '30000000000000',
-          attachedDeposit: storageDepositAmount,
-        });
-        results.push(depositResult);
+      if (nearJsActions.length === 0) {
+        requestLog.warn('No NEAR actions generated for sandbox transaction');
+        return res.status(400).send({ error: 'No actions generated for transaction' });
       }
 
-      for (const transfer of transferList) {
-        requestLog.debug({ contractId: config.ftContract }, 'Invoking ft_transfer via sandbox account');
-        const actionResult = await account.functionCall({
-          contractId: config.ftContract,
-          methodName: 'ft_transfer',
-          args: {
-            receiver_id: transfer.receiverId,
-            amount: transfer.amount,
-            memo: transfer.memo || '',
-          },
-          gas: '30000000000000',
-          attachedDeposit: '1',
-        });
-        results.push(actionResult);
-      }
-
-      // Return the last result (or combine them)
-      result = results.length === 1 ? results[0] : results;
+      requestLog.debug({ actionCount: nearJsActions.length }, 'Submitting batched sandbox transaction');
+      result = await account.signAndSendTransaction({
+        receiverId: config.ftContract,
+        actions: nearJsActions,
+      });
     } else {
       // Using @eclipseeer/near-api-ts (testnet/mainnet) - batch all actions in single transaction
       const tx = await signer.signTransaction({
         receiverAccountId: config.ftContract,
-        actions,
+        actions: apiTsActions,
       });
       const WAIT_UNTIL =
         (process.env.WAIT_UNTIL as

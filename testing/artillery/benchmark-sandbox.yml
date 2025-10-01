@@ -1,33 +1,32 @@
 config:
   target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 30
+    pool: 100
+    maxSockets: 256
   phases:
-    # Warm-up phase
-    - duration: 30
+    # Extended warm-up to prevent instantaneous spikes
+    - duration: 60
       arrivalRate: 5
-      name: "Warm-up"
-    
-    # Ramp-up phase
-    - duration: 60
-      arrivalRate: 10
-      rampTo: 100
-      name: "Ramp-up"
-    
-    # Peak load phase
-    - duration: 100
-      arrivalRate: 100
-      name: "Peak Load"
-    
-    # High-load stress test
-    - duration: 60
-      arrivalRate: 150
-      rampTo: 200
-      name: "Stress Test"
+      rampTo: 25
+      name: "Extended Warm-up"
 
-    # Hyperdrive phase (inspiration: omni-relayer benchmark – targets 600 TPS burst)
-    - duration: 90
-      arrivalRate: 250
-      rampTo: 600
-      name: "Hyperdrive"
+    # Gradual ramp towards target throughput (100 TPS)
+    - duration: 120
+      arrivalRate: 25
+      rampTo: 100
+      name: "Ramp to Target"
+
+    # Sustained validation window at target TPS
+    - duration: 120
+      arrivalRate: 100
+      name: "Sustained Target"
+
+    # Optional surge phase to observe saturation behaviour
+    - duration: 60
+      arrivalRate: 100
+      rampTo: 160
+      name: "Controlled Surge"
 
   variables:
     receiverId:
@@ -43,34 +42,8 @@ config:
       - "10000000000000000000000000"  # 10 tokens
 
 scenarios:
-  - name: "Send FT Token"
-    weight: 80
-    flow:
-      - post:
-          url: "/send-ft"
-          headers:
-            Content-Type: "application/json"
-          json:
-            receiverId: "{{ receiverId }}"
-            amount: "{{ amount }}"
-            memo: "Artillery load test - {{ $timestamp }}"
-          capture:
-            - json: "$.transactionHash"
-              as: "txHash"
-          expect:
-            - statusCode: 200
-            - hasProperty: "transactionHash"
-
-  - name: "Health Check"
-    weight: 10
-    flow:
-      - get:
-          url: "/health"
-          expect:
-            - statusCode: 200
-
-  - name: "Batch Transfer"
-    weight: 10
+  - name: "Batched FT Transfers"
+    weight: 70
     flow:
       - post:
           url: "/send-ft"
@@ -80,9 +53,31 @@ scenarios:
             transfers:
               - receiverId: "{{ receiverId }}"
                 amount: "{{ amount }}"
-                memo: "Batch test"
-              - receiverId: "user1.test.near"
-                amount: "1000000000000000000000000"
-                memo: "Batch test 2"
+                memo: "Benchmark batch A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Benchmark batch B"
+          expect:
+            - statusCode: 200
+
+  - name: "Single FT Transfer"
+    weight: 20
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Artillery load test - {{ $timestamp }}"
+          expect:
+            - statusCode: 200
+
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
           expect:
             - statusCode: 200

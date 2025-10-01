@@ -29,6 +29,8 @@ class NearConnectionManager {
   // near-api-js properties (sandbox)
   private nearApiJsNear: any = null;
   private nearApiJsAccount: any = null;
+  private sandboxAccounts: Array<{ account: any; near: any; publicKey: string }> = [];
+  private sandboxAccountIndex = 0;
 
   // @eclipseeer/near-api-ts properties (testnet/mainnet)
   private eclipseeerClient: any = null;
@@ -133,36 +135,73 @@ class NearConnectionManager {
 
     const masterAccountId = config.masterAccount || 'test.near';
     const nodeUrl = config.nodeUrl || 'http://127.0.0.1:3030';
+    const keys: string[] = [];
 
-    // Use environment variable key directly (simpler approach)
-    const envKey = process.env.MASTER_ACCOUNT_PRIVATE_KEY;
-
-    if (!envKey) {
-      throw new Error('MASTER_ACCOUNT_PRIVATE_KEY environment variable is required for sandbox');
+    const keysEnv = process.env.MASTER_ACCOUNT_PRIVATE_KEYS;
+    if (keysEnv && keysEnv.trim().length > 0) {
+      keys.push(
+        ...keysEnv
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
     }
 
-    const keyStore = new keyStores.InMemoryKeyStore();
-    const normalizedKey = normalizeKey(envKey);
-    const keyPair = utils.KeyPair.fromString(normalizedKey as any);
-    await keyStore.setKey('sandbox', masterAccountId, keyPair);
+    if (process.env.MASTER_ACCOUNT_PRIVATE_KEY) {
+      keys.push(process.env.MASTER_ACCOUNT_PRIVATE_KEY.trim());
+    }
 
-    const near = await connect({
-      networkId: 'sandbox',
+    if (keys.length === 0) {
+      const sandboxKey = this.getSandboxKey(masterAccountId);
+      if (sandboxKey) {
+        keys.push(sandboxKey);
+      }
+    }
+
+    const uniqueKeys = Array.from(new Set(keys.map(normalizeKey))).filter(Boolean);
+
+    if (uniqueKeys.length === 0) {
+      throw new Error(
+        'No sandbox signer keys provided. Set MASTER_ACCOUNT_PRIVATE_KEY or MASTER_ACCOUNT_PRIVATE_KEYS (comma-separated).',
+      );
+    }
+
+    this.sandboxAccounts = [];
+    this.sandboxAccountIndex = 0;
+
+    for (const normalizedKey of uniqueKeys) {
+      const keyStore = new keyStores.InMemoryKeyStore();
+      const keyPair = utils.KeyPair.fromString(normalizedKey as any);
+      await keyStore.setKey('sandbox', masterAccountId, keyPair);
+
+      const near = await connect({
+        networkId: 'sandbox',
+        nodeUrl,
+        keyStore,
+      });
+
+      const account = await near.account(masterAccountId);
+      const publicKey = keyPair.getPublicKey().toString();
+
+      this.sandboxAccounts.push({ account, near, publicKey });
+    }
+
+    if (this.sandboxAccounts.length === 0) {
+      throw new Error('Failed to initialise sandbox accounts.');
+    }
+
+    // Store references to the first account for backward compatibility where needed
+    this.nearApiJsNear = this.sandboxAccounts[0].near;
+    this.nearApiJsAccount = this.sandboxAccounts[0].account;
+
+    log.info({
       nodeUrl,
-      keyStore,
-    });
-
-    const account = await near.account(masterAccountId);
-
-    // Store references
-    this.nearApiJsNear = near;
-    this.nearApiJsAccount = account;
-
-    log.info({ nodeUrl, masterAccountId }, 'Sandbox RPC initialized (near-api-js)');
-    log.debug('Sandbox key source: env MASTER_ACCOUNT_PRIVATE_KEY');
+      masterAccountId,
+      keyCount: this.sandboxAccounts.length,
+    }, 'Sandbox RPC initialized (near-api-js)');
 
     this.isUsingNearApiJs = true;
-    log.info('near-api-js sandbox connection ready');
+    log.info('near-api-js sandbox connection ready with key rotation');
   }
 
   // Testnet/Mainnet: keep using @eclipseeer/near-api-ts
@@ -289,17 +328,33 @@ class NearConnectionManager {
     }, '@eclipseeer/near-api-ts connection ready');
   }
 
+  private getNextSandboxAccount(): { account: any; publicKey: string; index: number; poolSize: number } {
+    if (!this.sandboxAccounts.length) {
+      throw new Error('Sandbox accounts not initialized.');
+    }
+
+    const index = this.sandboxAccountIndex;
+    const entry = this.sandboxAccounts[index];
+    this.sandboxAccountIndex = (this.sandboxAccountIndex + 1) % this.sandboxAccounts.length;
+
+    return {
+      account: entry.account,
+      publicKey: entry.publicKey,
+      index,
+      poolSize: this.sandboxAccounts.length,
+    };
+  }
+
   getNear(): any {
     if (!this.initialized) {
       throw new Error('NEAR connection not initialized. Call init() first.');
     }
 
     if (this.isUsingNearApiJs) {
-      if (!this.nearApiJsAccount) {
-        throw new Error('Sandbox account not initialized');
-      }
-      // Return near-api-js account and near instance
-      return { account: this.nearApiJsAccount, near: this.nearApiJsNear };
+      return {
+        getAccount: () => this.getNextSandboxAccount(),
+        nodeUrl: config.nodeUrl,
+      };
     } else {
       if (!this.eclipseeerSigner) {
         throw new Error('Testnet signer not initialized');

@@ -26,6 +26,8 @@ API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-300}  # 5 minutes for proper benchmarking
 MAX_TPS=${MAX_TPS:-150}  # Target 100+ TPS
 SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
+SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
+CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-}}  # Optional override for cluster workers
 ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-artillery-local.yml}
 
 if [ "$SANDBOX_BENCHMARK_10M" = "1" ]; then
@@ -92,6 +94,7 @@ log_info "   - API Port: $API_PORT"
 log_info "   - Test Duration: ${TEST_DURATION}s"
 log_info "   - Max TPS Target: $MAX_TPS"
 log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
+log_info "   - Cluster mode: ${SANDBOX_USE_CLUSTER} (workers=${CLUSTER_WORKERS:-auto})"
 
 # Step 1: Setup Environment
 log_info "🔧 Setting up environment..."
@@ -235,8 +238,18 @@ export MASTER_ACCOUNT=$ACCOUNT_ID
 export MASTER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 export FT_CONTRACT=$ACCOUNT_ID
 
-# Start API service in background
-npm run start:sandbox > api.log 2>&1 &
+# Start API service in background (cluster by default)
+if [ "$SANDBOX_USE_CLUSTER" = "1" ]; then
+    log_info "Launching API in cluster mode"
+    if [ -n "$CLUSTER_WORKERS" ]; then
+        CLUSTER_WORKERS=$CLUSTER_WORKERS npm run start:sandbox:cluster > api.log 2>&1 &
+    else
+        npm run start:sandbox:cluster > api.log 2>&1 &
+    fi
+else
+    log_info "Launching API in single-process mode"
+    npm run start:sandbox > api.log 2>&1 &
+fi
 API_PID=$!
 
 if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 60 "API Service"; then
@@ -251,40 +264,62 @@ log_info "⚡ Setting up Artillery load test..."
 cat > "$ARTILLERY_DIR/artillery-local.yml" << EOF
 config:
   target: 'http://127.0.0.1:$API_PORT'
+  http:
+    timeout: 30          # seconds
+    pool: 100            # enable keep-alive / reuse sockets
+    maxSockets: 256
   phases:
-    # Warm-up phase
-    - duration: 30
-      arrivalRate: 10
-      name: "Warm-up"
-
-    # Ramp-up to target
+    # Extended warm-up so sandbox RPC can stabilise
     - duration: 60
-      arrivalRate: 20
-      rampTo: 80
-      name: "Ramp-up"
+      arrivalRate: 5
+      rampTo: 30
+      name: "Extended Warm-up"
 
-    # Sustained high load
-    - duration: 180
-      arrivalRate: 100
+    # Gradual ramp towards the configured target TPS
+    - duration: 120
+      arrivalRate: 30
       rampTo: $MAX_TPS
+      name: "Ramp to Target"
+
+    # Sustained load at TARGET for validation
+    - duration: 120
+      arrivalRate: $MAX_TPS
       name: "Sustained Load"
 
   variables:
     receiverId:
       - "user1.$ACCOUNT_ID"
       - "user2.$ACCOUNT_ID"
-      - "user3.$ACCOUNT_ID" 
+      - "user3.$ACCOUNT_ID"
       - "alice.$ACCOUNT_ID"
       - "bob.$ACCOUNT_ID"
-    
+
     amount:
       - "1000000000000000000000000"    # 1 token
       - "5000000000000000000000000"    # 5 tokens
       - "10000000000000000000000000"   # 10 tokens
 
 scenarios:
-  - name: "Single FT Transfer"
+  - name: "Batched FT Transfers"
     weight: 70
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch load test A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch load test B"
+          expect:
+            - statusCode: [200, 400, 500]
+
+  - name: "Single FT Transfer"
+    weight: 20
     flow:
       - post:
           url: "/send-ft"
@@ -295,30 +330,16 @@ scenarios:
             amount: "{{ amount }}"
             memo: "Load test {{ \$timestamp }}"
           expect:
-            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors
+            - statusCode: [200, 400, 500]
 
   - name: "Health Check"
-    weight: 20
+    weight: 10
     flow:
       - get:
           url: "/health"
           expect:
             - statusCode: 200
 
-  - name: "Batch Transfer"
-    weight: 10
-    flow:
-      - post:
-          url: "/send-ft"
-          headers:
-            Content-Type: "application/json"
-          json:
-            transfers:
-              - receiverId: "{{ receiverId }}"
-                amount: "{{ amount }}"
-                memo: "Batch load test"
-          expect:
-            - statusCode: [200, 400, 500]  # Accept success, validation errors, and contract errors
 EOF
 
 # Step 7: Run Simple API Validation Test
