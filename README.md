@@ -178,23 +178,13 @@ npm run run:worker:sandbox > worker-local.log 2>&1 &
 
 ### Step 4 — Load test
 
+Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips.
+
 ```bash
 ./run-artillery-test.sh sandbox
 ```
-Artifacts land in `artillery-results-sandbox-*.json` and `artillery-report-sandbox-*.html`.
 
-▶️ **Shortcut**: `./test-complete-pipeline.sh` chains Steps 1–4 automatically for a fresh sandbox smoke + load run.
-
-**Observed 2025-10-01 (8 workers, 3 keys):**
-- Total requests: 13,950; HTTP 200: 39; timeouts: 13,455.
-- Average RPS: 71 (below the 100 TPS goal).
-- Errors dominated by `nonce retries exceeded` (3,783 occurrences) and FT panics when subaccounts ran out of tokens.
-
-**Mitigations to try next:**
-- Increase `MASTER_ACCOUNT_PRIVATE_KEYS` pool (one key per worker).
-- Lower Artillery phases (e.g., cap at 40 rps) or stagger with `arrivalCount` blocks.
-- Refill `service.test.near` and receivers (FT burn from failed deposits drains balances).
-- Enable `SKIP_STORAGE_CHECK=false` only if receivers are pre-registered.
+Artifacts (JSON statistics) are written under `artillery-results-sandbox-*.json`. Use `./test-complete-pipeline.sh` if you prefer the end-to-end sandbox pipeline.
 
 ---
 
@@ -204,7 +194,7 @@ Artifacts land in `artillery-results-sandbox-*.json` and `artillery-report-sandb
 | --- | --- | --- | --- | --- | --- | --- |
 | 2025-10-01 | Sandbox | 8 | 3 keys | 71 | 0.28% | Nonce retries, FT insufficient balance |
 | 2025-10-01 | Sandbox | 5 | 1 key | 43 | 0.93% | Nonce retries, FT insufficient balance |
-| 2025-09-28 | Testnet | 5 | 4 keys | 127 | ~100% | Stable (uses FastNEAR RPC) |
+| 2025-10-01 | Testnet | 5 | 1 key | 93 | 0.43% | FastNEAR rate limiting (-429), RPC timeouts |
 
 Benchmark scripts live in `benchmark-sandbox.yml`, `benchmark-testnet.yml`, and `run-artillery-test.sh`.
 

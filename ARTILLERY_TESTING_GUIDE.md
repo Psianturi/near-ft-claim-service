@@ -1,181 +1,93 @@
 # Artillery Load Testing Guide
 
-## 🚀 Quick Start
+Focused notes on how we exercise the claiming service with Artillery. Keep it light: start the API, run the helper script, read the JSON output, and iterate based on the metrics.
 
-### Local Sandbox Testing (Recommended)
+## 1. Prerequisites
+
+- Dependencies installed (`npm install`).
+- Environment configured: `.env` for sandbox, `.env.testnet` for public network.
+- API & worker processes running for the target network (`npm run start:<env>` and, when needed, `npm run run:worker:<env>`).
+- For testnet: a FastNEAR API key (Pro tier in this project) and sufficient FT balances for the signer and receivers.
+
+## 2. Running the scenarios
+
+### Sandbox
+
 ```bash
-# Complete automated pipeline
+# One-click pipeline (deploy, bootstrap, load test)
 ./test-complete-pipeline.sh
 
-# Or step by step:
-npm run start:sandbox  # In terminal 1
-./run-artillery-test.sh sandbox  # In terminal 2
+# Manual sequence
+npm run start:sandbox        # terminal 1
+./run-artillery-test.sh sandbox  # terminal 2
 ```
 
-### Testnet Testing
+The script stores results as `artillery-results-sandbox-*.json`.
+
+### Testnet
+
 ```bash
-# Setup environment
-export NEAR_NETWORK_ID=testnet
-export FT_CONTRACT_ID=your-contract.testnet
-export NEAR_SIGNER_ACCOUNT_ID=your-account.testnet
-export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY=ed25519:your-key
-
-# Start API service
-npm run start:testnet
-
-# Run artillery test
+npm run start:testnet        # ensure service is live
 ./run-artillery-test.sh testnet
 ```
 
-## 📊 Why Artillery is Skipped in CI
+Use the FastNEAR key in `.env.testnet`. If you add secondary RPC endpoints, list them in `RPC_URLS`.
 
-### Technical Reasons:
-1. **⏰ Time Constraints**: GitHub Actions free tier has 2000 minutes/month limit
-2. **⚡ Resource Intensive**: Artillery tests require 5-30 minutes sustained load
-3. **🎯 Timeout Limits**: CI workflow has 20-minute timeout, insufficient for full benchmarks
-4. **💰 Cost Optimization**: Preserving CI minutes for essential validations
+## 3. Scenario profile (default `benchmark-*.yml`)
 
-### CI vs Local Testing Strategy:
-- **CI**: Fast API validation, contract deployment verification, negative tests
-- **Local**: Full Artillery load testing, TPS benchmarking, performance profiling
+| Phase | Duration | Target rate |
+| --- | --- | --- |
+| Warm-up | 30 s | 5 rps |
+| Ramp | 60 s | 10 → 50 rps |
+| Sustained | 120 s | 100 rps |
+| Peak | 60 s | 150 → 200 rps |
 
-## 🔧 Artillery Configuration Explained
+Traffic mix: ~70 % single `ft_transfer`, 20 % `/health`, 10 % batch transfers.
 
-### Test Phases:
-```yaml
-phases:
-  # Warm-up: 30s at 5 RPS
-  - duration: 30
-    arrivalRate: 5
-    name: "Warm-up"
-  
-  # Ramp-up: 60s from 10 to 50 RPS  
-  - duration: 60
-    arrivalRate: 10
-    rampTo: 50
-    name: "Ramp-up"
-    
-  # Sustained: 120s at 100 RPS
-  - duration: 120
-    arrivalRate: 100
-    name: "Sustained Load"
-    
-  # Peak: 60s from 150 to 200 RPS
-  - duration: 60
-    arrivalRate: 150
-    rampTo: 200
-    name: "Peak Load"
-```
+Adapt the YAML if you need a calmer profile (e.g., lower the peak to 40–60 rps when validating sandbox changes).
 
-### Test Scenarios:
-- **70%** Single FT transfers
-- **20%** Health checks  
-- **10%** Batch transfers
+## 4. Reading the results
 
-## 📈 Expected Performance
+1. Inspect the summary printed by `run-artillery-test.sh` (total requests, success count, error distribution).
+2. For deeper analysis, open the JSON:
+   ```bash
+   jq '.aggregate' artillery-results-<env>-<timestamp>.json
+   ```
+3. Optional HTML report:
+   ```bash
+   npx artillery@latest report artillery-results-<env>-<timestamp>.json
+   ```
 
-> ⚠️ The 200+ TPS targets below were aspirational. The latest sandbox run on 2025-09-29 timed out under the default profile—tune arrival rates downward (≈40–60 rps peak) before attempting stress phases. See [ARTILLERY_SANDBOX_RESULTS.md](ARTILLERY_SANDBOX_RESULTS.md) for details.
+Key metrics to watch:
+- **Success count / success rate** – the effective TPS.
+- **`http.response_time` p95/p99** – end-to-end latency under load.
+- **`errors.*` counters** – tells you whether the bottleneck is RPC, contract logic, or client timeouts.
 
-### Sandbox (Local):
-- **Target TPS**: 200+
-- **Response Time**: <500ms avg
-- **Success Rate**: >95%
+## 5. Recent observations (2025‑10‑01)
 
-### Testnet:
-- **Target TPS**: 100+
-- **Response Time**: <1000ms avg  
-- **Success Rate**: >90%
+| Environment | Load | Successes | Main blockers |
+| --- | --- | --- | --- |
+| Sandbox (8 workers, 3 keys) | 13,950 requests | 39 (0.28 %) | Nonce retries, receivers running out of FT balance |
+| Testnet (5 workers, 1 key) | 24,450 requests | 106 (0.43 %) | FastNEAR rate limiting (`-429`), RPC timeouts |
 
-## 🛠️ Troubleshooting
+Notes:
+- The sandbox profile is intentionally aggressive; start with a trimmed phase schedule when validating changes.
+- Testnet runs currently saturate the FastNEAR Pro quota. Rotate additional access keys and spread requests across multiple RPC endpoints to reach higher sustained TPS.
 
-### Contract Deployment Issues:
-```bash
-# Check if contract exists
-curl -X POST http://127.0.0.1:3030 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": "1",
-    "method": "query", 
-    "params": {
-      "request_type": "view_code",
-      "finality": "final",
-      "account_id": "test.near"
-    }
-  }'
-```
+## 6. Quick troubleshooting
 
-### API Service Not Responding:
-```bash
-# Check if service is running
-curl http://127.0.0.1:3000/health
+| Symptom | Likely cause | Remedy |
+| --- | --- | --- |
+| `errors.ETIMEDOUT`, `errors.ECONNRESET` | RPC endpoint saturated | Add RPC URLs, reduce arrival rate, or pause between phases. |
+| `InvalidNonce` failures | Too many concurrent tx per key | Expand `MASTER_ACCOUNT_PRIVATE_KEYS` (one key per worker) or lower concurrency. |
+| `FT transfer failed: account not registered` | Receiver missing storage | Run the bootstrap script or set `SKIP_STORAGE_CHECK=false`. |
+| `Rate limits exceeded (-429)` | FastNEAR quota reached | Wait for quota reset, rotate to a secondary key, or upgrade plan. |
 
-# Check logs
-tail -f api.log
-```
+## 7. Tips for higher TPS
 
-### Near Sandbox Issues:
-```bash
-# Check sandbox status
-curl http://127.0.0.1:3030/status
+- Keep the worker count and key pool aligned (N workers ⇒ N keys).
+- Pre-fund receiver accounts and disable the storage check only when you are certain every receiver is registered.
+- Use staggered phases (e.g., multiple shorter sustained segments) to observe when bottlenecks appear.
+- Capture before/after metrics in `test-results/` so trends are easy to compare.
 
-# Reset sandbox
-pkill -f near-sandbox
-rm -rf ~/.near
-npx near-sandbox init
-```
-
-## 📋 Results Interpretation
-
-### Key Metrics:
-- **Request Rate**: Requests per second achieved
-- **Response Time**: Latency distribution (p50, p95, p99)
-- **Error Rate**: Failed requests percentage
-- **Throughput**: Successful transactions per second
-
-### Success Criteria:
-- ✅ **TPS >100**: Good performance
-- ✅ **Response <1s**: Acceptable latency  
-- ✅ **Errors <10%**: Acceptable failure rate
-- ✅ **No timeouts**: System stability
-
-## 🎯 Advanced Testing
-
-### Custom Test Duration:
-```bash
-TEST_DURATION=600 ./test-complete-pipeline.sh  # 10 minutes
-```
-
-### Custom TPS Target:
-```bash
-MAX_TPS=500 ./test-complete-pipeline.sh
-```
-
-### Stress Testing:
-```bash
-# Run multiple concurrent Artillery instances
-for i in {1..3}; do
-  artillery run artillery-local.yml &
-done
-wait
-```
-
-## 📊 Monitoring
-
-### Real-time Monitoring:
-```bash
-# Watch API logs
-tail -f api.log | grep -E "(✅|❌|🚀)"
-
-# Monitor system resources
-htop
-
-# Check network connections  
-ss -tulpn | grep :3000
-```
-
-### Post-Test Analysis:
-- Review HTML report for detailed metrics
-- Check JSON file for raw data analysis
-- Compare results across test runs
-- Identify performance bottlenecks
+That’s all—run the script, read the JSON, adjust, repeat. Reach out to the benchmark table in the main `README.md` for the latest headline numbers and mitigation ideas.

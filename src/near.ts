@@ -180,7 +180,10 @@ class NearConnectionManager {
 
     const headers: Record<string, string> = {};
     const fastnearKey = process.env.FASTNEAR_API_KEY;
-    if (fastnearKey) headers['x-api-key'] = fastnearKey;
+    if (fastnearKey) {
+      headers['Authorization'] = `Bearer ${fastnearKey}`;
+      headers['x-api-key'] = fastnearKey;
+    }
     const rpcHeadersEnv = process.env.RPC_HEADERS;
     if (rpcHeadersEnv) {
       try {
