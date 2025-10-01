@@ -7,19 +7,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - '.github/workflows/sandbox-integration.yml'
   pull_request:
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - '.github/workflows/sandbox-integration.yml'
+    branches:
+      - '**'
 
 jobs:
   sandbox-integration:
