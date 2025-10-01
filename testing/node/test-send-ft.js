@@ -9,7 +9,7 @@
  *   node test-send-ft.js
  */
 
-import { SimpleFTService, createFTServiceFromEnv, parseTokenAmount, formatTokenAmount } from './src/simple-ft-service.ts';
+import { SimpleFTService, createFTServiceFromEnv, parseTokenAmount, formatTokenAmount } from '../../src/simple-ft-service.ts';
 
 async function testSendFT() {
   console.log('🧪 Testing FT Send functionality...');

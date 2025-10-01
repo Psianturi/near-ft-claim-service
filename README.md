@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescript.org/)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-blue)](https://near.org/)
 
-A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfers on NEAR. It is used in load tests that target **100+ TPS sustained for 60 seconds**, and supports both the local sandbox and public testnet environments.
+A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfers on NEAR. It now includes profiles for both the original 60-second stress test and the sustained benchmark goal of **100 transfers per second for 10 minutes** (≈ 60,000 successful transfers), and supports the local sandbox plus public testnet environments.
 
 ---
 
@@ -16,16 +16,16 @@ A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfer
 | Config file | `.env` | `.env.testnet` |
 | Entry point | `npm run start:sandbox` | `npm run start:testnet` |
 | Worker runner | `npm run run:worker:sandbox` | `npm run run:worker:testnet` |
-| Load test | `./run-artillery-test.sh sandbox` | `./run-artillery-test.sh testnet` |
-| Latest load snapshot (2025-10-01) | 39 / 13,950 requests OK, 71 RPS avg, heavy timeouts & nonce stalls | 127 TPS avg (2025-09-28 run), requires FastNEAR RPC |
+| Load test | `./testing/artillery/run-artillery-test.sh sandbox` | `./testing/artillery/run-artillery-test.sh testnet` |
+| Latest load snapshot (2025-10-01) | 158 / 25,800 requests OK (0.6 %), 93 RPS avg, nonce contention & storage deposit races | 127 TPS avg (2025-09-28 run), requires FastNEAR RPC |
 
-🔔 **Key insight**: the sandbox struggles under the current Artillery schedule even after raising workers to 8 and rotating three access keys. Expect “nonce retries exceeded” and “account doesn’t have enough balance” when the queue has to mint storage or when receipts get re-ordered. See [§5 Benchmark status](#5-benchmark-status) for the latest metrics & mitigations.
+🔔 **Key insight**: the sandbox still struggles once arrival rates exceed what a single signer key can handle. Expect “nonce retries exceeded” and “account doesn’t have enough balance” around the 25k-request mark even after pre-registering receivers. The pipeline now auto-bootstraps receivers, but we still need a larger key pool (one key per worker) to cross the 60k-transfer goal—see [§5 Benchmark status](#5-benchmark-status) for the latest metrics & mitigation plan.
 
 ---
 
 ## 2. Requirements
 
-- Node.js ≥ 20 (Node 24 recommended for undici `File` support used by Artillery 2.x)
+- Node.js ≥ 20 (Node 24 recommended; Artillery 2.x hyperdrive phase requires Node ≥ 22.13 for local execution)
 - npm ≥ 9
 - Rust toolchain (if rebuilding `fungible_token.wasm`)
 - NEAR Sandbox (`npx near-sandbox`) for local runs
@@ -178,13 +178,13 @@ npm run run:worker:sandbox > worker-local.log 2>&1 &
 
 ### Step 4 — Load test
 
-Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips.
+Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml` (expect roughly 12 minutes end-to-end).
 
 ```bash
-./run-artillery-test.sh sandbox
+./testing/artillery/run-artillery-test.sh sandbox
 ```
 
-Artifacts (JSON statistics) are written under `artillery-results-sandbox-*.json`. Use `./test-complete-pipeline.sh` if you prefer the end-to-end sandbox pipeline.
+Artifacts (JSON statistics) are written under `testing/artillery/artillery-results-sandbox-*.json`. Use `./testing/test-complete-pipeline.sh` for the end-to-end sandbox pipeline—it now deploys, bootstraps receivers (`ci/bootstrap-sandbox-accounts.mjs`), executes Artillery with your selected profile, and prints a JSON summary in-line. Set `ARTILLERY_CONFIG=<file.yml>` (or use `SANDBOX_BENCHMARK_10M=1`) to reuse the pipeline profile outside the script.
 
 ---
 
@@ -193,10 +193,20 @@ Artifacts (JSON statistics) are written under `artillery-results-sandbox-*.json`
 | Date | Environment | Worker count | Key pool | Avg RPS | Success % | Major errors |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2025-10-01 | Sandbox | 8 | 3 keys | 71 | 0.28% | Nonce retries, FT insufficient balance |
-| 2025-10-01 | Sandbox | 5 | 1 key | 43 | 0.93% | Nonce retries, FT insufficient balance |
+| 2025-10-01 | Sandbox | 5 | 1 key | 93 | 0.61% | Nonce retries, FT insufficient balance, storage races |
 | 2025-10-01 | Testnet | 5 | 1 key | 93 | 0.43% | FastNEAR rate limiting (-429), RPC timeouts |
 
-Benchmark scripts live in `benchmark-sandbox.yml`, `benchmark-testnet.yml`, and `run-artillery-test.sh`.
+### 5.1 Roadmap to the 60k-transfer benchmark
+
+- **Goal recap**: 100 successful FT transfers per second for 10 minutes (≈ 60,000 transfers). The profile lives at `testing/artillery/benchmark-sandbox-10m.yml` and is enabled via `SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh`.
+- **Current bottleneck**: Sandbox runs saturate a single signer key—`nonce retries exceeded` dominates once 25k+ requests race for the same key, even after pre-registering receivers.
+- **Mitigation plan**:
+   1. Expand the signer key pool (one access key per worker / ~20 TPS) and rotate them via `MASTER_ACCOUNT_PRIVATE_KEYS`.
+   2. Temporarily lower `CONCURRENCY_LIMIT`/`MAX_IN_FLIGHT` in `.env` so sandbox runs avoid nonce storms until rotation lands.
+   3. Rerun the 10-minute profile and confirm ≥ 60,000 `http.codes.200` successes; capture deltas under `test-results/` for posterity.
+   4. Apply the same key fan-out to testnet, pairing it with additional FastNEAR or RPC endpoints to maintain throughput without throttling.
+
+Benchmark scripts live in `testing/artillery/benchmark-sandbox.yml`, `testing/artillery/benchmark-testnet.yml`, and `testing/artillery/run-artillery-test.sh`.
 
 ---
 
@@ -221,7 +231,7 @@ Benchmark scripts live in `benchmark-sandbox.yml`, `benchmark-testnet.yml`, and 
    ```
 4. Load test:
    ```bash
-   ./run-artillery-test.sh testnet
+   ./testing/artillery/run-artillery-test.sh testnet
    ```
    Ensure RPC quotas are large enough or add secondary `RPC_URLS` for failover.
 
@@ -250,13 +260,14 @@ Logs:
 
 | Script | Command to run | Purpose |
 | --- | --- | --- |
-| `run-artillery-test.sh` | `./run-artillery-test.sh sandbox` | Execute the sandbox Artillery scenario and save JSON/HTML reports under `artillery-results-sandbox-*`. |
-|  | `./run-artillery-test.sh testnet` | Execute the testnet Artillery scenario (ensure RPC quotas and FastNEAR key). |
-| `test-complete-pipeline.sh` | `./test-complete-pipeline.sh` | End-to-end pipeline: deploy sandbox contract, bootstrap receivers, run smoke tests, then trigger the sandbox Artillery profile. |
+| `testing/artillery/run-artillery-test.sh` | `./testing/artillery/run-artillery-test.sh sandbox` | Execute the sandbox Artillery scenario and save JSON/HTML reports under `testing/artillery/artillery-results-sandbox-*`. Supports overrides via `ARTILLERY_CONFIG=<file.yml>`. |
+|  | `./testing/artillery/run-artillery-test.sh testnet` | Execute the testnet Artillery scenario (ensure RPC quotas and FastNEAR key). |
+| `testing/test-complete-pipeline.sh` | `./testing/test-complete-pipeline.sh` | End-to-end pipeline: deploy sandbox contract, bootstrap receivers, run smoke tests, then trigger the sandbox Artillery profile. Set `SANDBOX_BENCHMARK_10M=1` for the 600-second benchmark or `ARTILLERY_CONFIG=<file.yml>` to point at a custom scenario. |
 | `ci/run-local-sandbox.sh` | `./ci/run-local-sandbox.sh` | Spin up a local sandbox node plus helper processes (used by CI, also handy for local bring-up). |
 | `Artillery CLI` | `npx artillery report <json> --output report.html` | Convert saved JSON output into an HTML report for sharing. |
 
-> All shell scripts live at the repo root. Run `chmod +x *.sh` once if your checkout stripped executable bits.
+> Shell utilities live under `testing/` (Artillery) and the repo root (`ci/`). Run `chmod +x testing/**/*.sh ci/*.sh` once if your checkout stripped executable bits.
+> The sandbox benchmark now includes a "Hyperdrive" phase (up to 600 TPS) inspired by [`omni-relayer-benchmark`](https://github.com/frolvanya/omni-relayer-benchmark). Trim that phase or point `ARTILLERY_CONFIG` to a copy if your machine or RPC cannot sustain it yet.
 
 ### 8.2 Node/npm scripts
 

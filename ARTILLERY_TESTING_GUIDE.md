@@ -14,26 +14,29 @@ Focused notes on how we exercise the claiming service with Artillery. Keep it li
 ### Sandbox
 
 ```bash
-# One-click pipeline (deploy, bootstrap, load test)
-./test-complete-pipeline.sh
+# One-click pipeline (deploy, bootstrap receivers, run load + summary)
+./testing/test-complete-pipeline.sh
 
-# Manual sequence
+# Ten-minute benchmark (100 TPS × 600 s)
+SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh
+
+# Manual sequence (reusing the generated profile)
 npm run start:sandbox        # terminal 1
-./run-artillery-test.sh sandbox  # terminal 2
+ARTILLERY_CONFIG=artillery-local.yml ./testing/artillery/run-artillery-test.sh sandbox  # terminal 2
 ```
 
-The script stores results as `artillery-results-sandbox-*.json`.
+The script stores results as `testing/artillery/artillery-results-sandbox-*.json` and prints `RESULT_JSON=<path>` at the end. When you need to inspect the last run, capture that line from stdout or read it from `testing/artillery/.last-artillery-run.log` (written by the pipeline helper). Override `ARTILLERY_CONFIG` or set `SANDBOX_BENCHMARK_10M=1` to point at long-running profiles such as `benchmark-sandbox-10m.yml`.
 
 ### Testnet
 
 ```bash
 npm run start:testnet        # ensure service is live
-./run-artillery-test.sh testnet
+./testing/artillery/run-artillery-test.sh testnet
 ```
 
 Use the FastNEAR key in `.env.testnet`. If you add secondary RPC endpoints, list them in `RPC_URLS`.
 
-## 3. Scenario profile (default `benchmark-*.yml`)
+## 3. Scenario profile (default `testing/artillery/benchmark-*.yml`)
 
 | Phase | Duration | Target rate |
 | --- | --- | --- |
@@ -41,21 +44,24 @@ Use the FastNEAR key in `.env.testnet`. If you add secondary RPC endpoints, list
 | Ramp | 60 s | 10 → 50 rps |
 | Sustained | 120 s | 100 rps |
 | Peak | 60 s | 150 → 200 rps |
+| Hyperdrive (optional) | 90 s | 250 → 600 rps |
+
+The long-form benchmark under `benchmark-sandbox-10m.yml` extends the sustained phase to 600 seconds at a flat 100 rps after a 10-second warm-up, matching the “100 TPS for 10 minutes” requirement. Expect the full run (pipeline + teardown) to last just over 12 minutes.
 
 Traffic mix: ~70 % single `ft_transfer`, 20 % `/health`, 10 % batch transfers.
 
-Adapt the YAML if you need a calmer profile (e.g., lower the peak to 40–60 rps when validating sandbox changes).
+Adapt the YAML if you need a calmer profile (e.g., remove the "Hyperdrive" stanza or clone the file under another name). The hyperdrive phase is inspired by [`omni-relayer-benchmark`](https://github.com/frolvanya/omni-relayer-benchmark) which demonstrates 600+ transfers/sec with a Rust-based driver.
 
 ## 4. Reading the results
 
-1. Inspect the summary printed by `run-artillery-test.sh` (total requests, success count, error distribution).
+1. Inspect the summary printed by `testing/artillery/run-artillery-test.sh` (total requests, success count, error distribution).
 2. For deeper analysis, open the JSON:
    ```bash
-   jq '.aggregate' artillery-results-<env>-<timestamp>.json
+   jq '.aggregate' testing/artillery/artillery-results-<env>-<timestamp>.json
    ```
 3. Optional HTML report:
    ```bash
-   npx artillery@latest report artillery-results-<env>-<timestamp>.json
+   npx artillery@latest report testing/artillery/artillery-results-<env>-<timestamp>.json
    ```
 
 Key metrics to watch:
@@ -67,7 +73,7 @@ Key metrics to watch:
 
 | Environment | Load | Successes | Main blockers |
 | --- | --- | --- | --- |
-| Sandbox (8 workers, 3 keys) | 13,950 requests | 39 (0.28 %) | Nonce retries, receivers running out of FT balance |
+| Sandbox (single validator key) | 25,800 requests | 158 (0.61 %) | Nonce retries, storage deposits racing against transfers |
 | Testnet (5 workers, 1 key) | 24,450 requests | 106 (0.43 %) | FastNEAR rate limiting (`-429`), RPC timeouts |
 
 Notes:

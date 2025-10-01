@@ -1,15 +1,15 @@
 # NEAR FT Claiming Service – Sandbox Performance Results
 
 ## Latest Benchmark (2025-09-29)
-- **Command**: `./run-artillery-test.sh sandbox`
-- **Configuration**: [`benchmark-sandbox.yml`](benchmark-sandbox.yml)
+- **Command**: `./testing/artillery/run-artillery-test.sh sandbox`
+- **Configuration**: [`testing/artillery/benchmark-sandbox.yml`](testing/artillery/benchmark-sandbox.yml)
 - **Service State**:
   - FT contract `ft.test.near` redeployed via `ci/deploy-sandbox-rpc.mjs`
   - Receiver accounts (`user1/2/3.test.near`, `alice.test.near`, `bob.test.near`) bootstrapped with storage deposits
   - API server running locally at `http://127.0.0.1:3000`
 - **Artifacts**:
-  - JSON summary: [`artillery-results-sandbox-20250929-123051.json`](artillery-results-sandbox-20250929-123051.json)
-  - HTML report: [`artillery-report-sandbox-20250929-123051.html`](artillery-report-sandbox-20250929-123051.html)
+  - JSON summary: [`testing/artillery/artillery-results-sandbox-20250929-123051.json`](testing/artillery/artillery-results-sandbox-20250929-123051.json)
+  - HTML report: [`testing/artillery/artillery-report-sandbox-20250929-123051.html`](testing/artillery/artillery-report-sandbox-20250929-123051.html)
 
 ### Key Metrics (Aggregated)
 | Metric | Value |
@@ -39,7 +39,7 @@
 2. **Instrument worker backlog**: Capture queue depth and NEAR RPC response times during the run to correlate with timeouts and 500 errors.
 3. **Inspect failure causes**: Tail `server.log` / console output to classify the 500 responses (contract panics vs queue rejections).
 4. **Add storage/deposit guards**: If panics continue, ensure receivers are registered ahead of the test or call `storage_deposit` when missing.
-5. **Iterate & document**: After tuning, rerun `./run-artillery-test.sh sandbox` and append results to this report for comparison.
+5. **Iterate & document**: After tuning, rerun `./testing/artillery/run-artillery-test.sh sandbox` and append results to this report for comparison.
 
 ---
 *Generated from Artillery run executed on 2025-09-29 at 12:30:51 local time.*

@@ -61,6 +61,6 @@ npm run typecheck && npm run security && npm run test:frontend
 
 - Add visual regression snapshots (Playwright trace viewer) once UI stabilises.
 - Expand API coverage with contract-state assertions for storage deposits.
-- Wire sandbox load scenarios (`./run-artillery-test.sh sandbox`) into optional nightly jobs.
+- Wire sandbox load scenarios (`./testing/artillery/run-artillery-test.sh sandbox`) into optional nightly jobs.
 
 With this structure we balance quick safety nets (type checking & Playwright) against deeper blockchain validation that still relies on existing integration scripts.

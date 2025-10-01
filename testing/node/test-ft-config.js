@@ -3,7 +3,7 @@
  * Tests the complete send-ft flow using the existing near-api-js infrastructure
  */
 
-import { createFTServiceFromEnv } from './src/simple-ft-service.ts';
+import { createFTServiceFromEnv } from '../../src/simple-ft-service.ts';
 
 async function testSendFT() {
   console.log('🧪 Testing FT Send functionality using simple service...');

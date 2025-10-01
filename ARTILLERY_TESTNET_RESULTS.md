@@ -101,11 +101,11 @@
 ### **Phase 1: Testnet Benchmark** (Current Priority)
 1. **Start Service**: `npm start` (already running)
 2. **Run Benchmark**: `npm run benchmark`
-3. **Monitor Results**: Check Artillery output dan service logs
-4. **Analyze Performance**: Compare dengan target 350 TPS
+3. **Monitor Results**: Check the Artillery output and service logs
+4. **Analyze Performance**: Compare the metrics against the 350 TPS target
 5. **Document Results**: Update `ARTILLERY_TESTNET_RESULTS.md`
 
-**Expected Outcome**: Service akan menunjukkan kemampuan menangani 350+ TPS dengan error handling yang baik, meskipun transfer mungkin gagal karena contract balance (yang merupakan expected behavior).
+**Expected Outcome**: The service should demonstrate that it can handle 350+ TPS with robust error handling, even if some transfers fail due to contract balance (which is an expected behaviour).
 
 ### **Phase 2: Sandbox Debugging** (After Testnet Success)
 **Critical Issue**: Sandbox environment completely failed - cannot connect to `localhost:22365`

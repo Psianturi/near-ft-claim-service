@@ -59,8 +59,18 @@ fi
 
 echo "✅ API service is running at ${TARGET_URL}"
 
-# Prepare Artillery configuration
-ARTILLERY_CONFIG="benchmark-${ENVIRONMENT}.yml"
+# Prepare Artillery configuration (allows override via ARTILLERY_CONFIG env)
+ARTILLERY_CONFIG="${ARTILLERY_CONFIG:-}"
+if [ -n "$ARTILLERY_CONFIG" ]; then
+  if [ ! -f "$ARTILLERY_CONFIG" ]; then
+    echo "❌ Custom Artillery config not found: $ARTILLERY_CONFIG"
+    exit 1
+  fi
+  echo "🛠️  Using custom Artillery config: $ARTILLERY_CONFIG"
+else
+  ARTILLERY_CONFIG="benchmark-${ENVIRONMENT}.yml"
+fi
+
 if [ ! -f "$ARTILLERY_CONFIG" ]; then
     echo "📝 Creating Artillery config: $ARTILLERY_CONFIG"
     cat > "$ARTILLERY_CONFIG" << EOF
@@ -201,6 +211,7 @@ if [ -f "$OUTPUT_FILE" ]; then
     echo "📊 View detailed results:"
     echo "   - JSON data: $OUTPUT_FILE"
     echo "   - Note: Local HTML report generation is no longer available in Artillery 2.x"
+  echo "RESULT_JSON=$OUTPUT_FILE"
 else
     echo "❌ Artillery test failed - no output file generated"
     exit 1

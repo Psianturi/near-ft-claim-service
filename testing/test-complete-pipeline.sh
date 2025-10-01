@@ -5,7 +5,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ARTILLERY_DIR="$PROJECT_ROOT/testing/artillery"
+
+cd "$PROJECT_ROOT"
 
 # Colors for output
 RED='\033[0;31m'
@@ -18,12 +21,18 @@ log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
-
-# Configuration
-SANDBOX_PORT=3030
-API_PORT=3000
+SANDBOX_PORT=${SANDBOX_PORT:-3030}
+API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-300}  # 5 minutes for proper benchmarking
 MAX_TPS=${MAX_TPS:-150}  # Target 100+ TPS
+SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
+ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-artillery-local.yml}
+
+if [ "$SANDBOX_BENCHMARK_10M" = "1" ]; then
+    ARTILLERY_PROFILE="benchmark-sandbox-10m.yml"
+    TEST_DURATION=${TEST_DURATION_OVERRIDE:-600}
+    MAX_TPS=${MAX_TPS_OVERRIDE:-100}
+fi
 
 # Function to check if port is in use
 check_port() {
@@ -82,6 +91,7 @@ log_info "   - Sandbox Port: $SANDBOX_PORT"
 log_info "   - API Port: $API_PORT" 
 log_info "   - Test Duration: ${TEST_DURATION}s"
 log_info "   - Max TPS Target: $MAX_TPS"
+log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
 
 # Step 1: Setup Environment
 log_info "🔧 Setting up environment..."
@@ -136,6 +146,12 @@ export FT_CONTRACT_ID=$ACCOUNT_ID
 export NEAR_SIGNER_ACCOUNT_ID=$ACCOUNT_ID
 export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 export NEAR_CONTRACT_ACCOUNT_ID=$ACCOUNT_ID
+
+# Step 4a: Prepare receiver accounts for benchmark
+log_info "👥 Bootstrapping sandbox receiver accounts..."
+export SANDBOX_RECEIVER_LIST=${SANDBOX_RECEIVER_LIST:-"user1.$ACCOUNT_ID,user2.$ACCOUNT_ID,user3.$ACCOUNT_ID,alice.$ACCOUNT_ID,bob.$ACCOUNT_ID"}
+node ci/bootstrap-sandbox-accounts.mjs
+log_success "Receiver accounts ready: $SANDBOX_RECEIVER_LIST"
 
 # Step 4: Deploy Contract
 log_info "📦 Deploying FT contract..."
@@ -217,6 +233,7 @@ log_info "🌐 Starting API service..."
 export NODE_URL=http://127.0.0.1:$SANDBOX_PORT
 export MASTER_ACCOUNT=$ACCOUNT_ID
 export MASTER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
+export FT_CONTRACT=$ACCOUNT_ID
 
 # Start API service in background
 npm run start:sandbox > api.log 2>&1 &
@@ -231,7 +248,7 @@ fi
 # Step 6: Create Artillery Configuration
 log_info "⚡ Setting up Artillery load test..."
 
-cat > artillery-local.yml << EOF
+cat > "$ARTILLERY_DIR/artillery-local.yml" << EOF
 config:
   target: 'http://127.0.0.1:$API_PORT'
   phases:
@@ -377,6 +394,62 @@ echo "   ✅ Invalid receiver validation: PASSED"
 echo "   ✅ Missing field validation: PASSED"
 echo "   ✅ Valid request format: ACCEPTED"
 echo "   ✅ Concurrent handling: WORKING"
+echo ""
+
+# Step 8: Execute Artillery load test with custom profile
+log_info "🚀 Launching Artillery load test (sandbox profile)..."
+log_info "   ↳ Active profile: ${ARTILLERY_PROFILE}"
+
+ARTILLERY_LOG="$ARTILLERY_DIR/.last-artillery-run.log"
+if ARTILLERY_CONFIG="$ARTILLERY_PROFILE" "$ARTILLERY_DIR/run-artillery-test.sh" sandbox | tee "$ARTILLERY_LOG"; then
+    RESULT_FILE=$(grep 'RESULT_JSON=' "$ARTILLERY_LOG" | tail -n 1 | cut -d'=' -f2-)
+
+    if [ -z "$RESULT_FILE" ]; then
+        log_error "Artillery script did not report RESULT_JSON path"
+        RESULT_FILE=$(ls -t "$ARTILLERY_DIR"/artillery-results-sandbox-*.json 2>/dev/null | head -n 1)
+    else
+        RESULT_FILE="$ARTILLERY_DIR/$RESULT_FILE"
+    fi
+
+    if [ -z "$RESULT_FILE" ] || [ ! -f "$RESULT_FILE" ]; then
+        log_error "Unable to locate Artillery results JSON"
+        exit 1
+    fi
+
+    log_success "Artillery load test completed. Results: $RESULT_FILE"
+
+    if command -v jq &> /dev/null; then
+                        echo ""
+                        echo "📈 Artillery summary (via jq):"
+                        if ! jq -r '
+                            def counter(key): (.aggregate.counters[key] // 0);
+                            def rate(key): (.aggregate.rates[key] // 0);
+                            def summary(key): (.aggregate.summaries[key] // {});
+                                                            def sum4xx:
+                                                                ( .aggregate.counters
+                                                                        | to_entries
+                                                                        | map(select(.key | startswith("http.codes.4")))
+                                                                        | map(.value)
+                                                                        | add ) // 0;
+                            "Requests: \(counter("http.requests"))",
+                            "200s: \(counter("http.codes.200"))",
+                            "4xx: \(sum4xx)",
+                            "5xx: \(counter("http.codes.500"))",
+                            "ETIMEDOUT: \(counter("errors.ETIMEDOUT"))",
+                            "ECONNRESET: \(counter("errors.ECONNRESET"))",
+                            "p95 latency: \(summary("http.response_time").p95 // 0) ms",
+                            "Mean RPS: \(rate("http.request_rate"))"
+                        ' "$RESULT_FILE"; then
+                                log_warning "jq summary failed (syntax or schema mismatch)"
+                        fi
+    else
+        log_warning "jq not available; skipping Artillery summary"
+    fi
+else
+    log_error "Artillery load test failed"
+    exit 1
+fi
+
 echo ""
 echo "📝 Note: Contract deployment has compatibility issues with NEAR 2.6.5"
 echo "💡 Performance already validated on testnet (300+ TPS achieved)"

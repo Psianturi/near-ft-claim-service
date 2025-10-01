@@ -31,7 +31,7 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.1",
     "@types/node-fetch": "^2.6.13",
-  "artillery": "^2.0.26",
+    "artillery": "^2.0.26",
     "audit-ci": "^7.1.0",
     "http-server": "^14.1.1",
     "near-sandbox": "^0.2.0",

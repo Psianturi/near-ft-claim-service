@@ -7,7 +7,7 @@ config:
       name: "Warm-up"
     
     # Ramp-up phase
-    - duration: 50
+    - duration: 60
       arrivalRate: 10
       rampTo: 100
       name: "Ramp-up"
@@ -17,11 +17,17 @@ config:
       arrivalRate: 100
       name: "Peak Load"
     
-    # # High-load stress test
-    # - duration: 60
-    #   arrivalRate: 150
-    #   rampTo: 200
-    #   name: "Stress Test"
+    # High-load stress test
+    - duration: 60
+      arrivalRate: 150
+      rampTo: 200
+      name: "Stress Test"
+
+    # Hyperdrive phase (inspiration: omni-relayer benchmark – targets 600 TPS burst)
+    - duration: 90
+      arrivalRate: 250
+      rampTo: 600
+      name: "Hyperdrive"
 
   variables:
     receiverId:

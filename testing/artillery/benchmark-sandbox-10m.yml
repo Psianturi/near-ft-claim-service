@@ -1,0 +1,53 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  phases:
+    # Gentle warm-up before sustained benchmark
+    - duration: 10
+      arrivalRate: 20
+      rampTo: 100
+      name: "Warm-up"
+
+    # Sustained benchmark requirement: 100 TPS for 10 minutes (600 seconds)
+    - duration: 600
+      arrivalRate: 100
+      name: "Sustained 100 TPS"
+
+  variables:
+    receiverId:
+      - "user1.test.near"
+      - "user2.test.near"
+      - "user3.test.near"
+      - "alice.test.near"
+      - "bob.test.near"
+
+    amount:
+      - "1000000000000000000000000"   # 1 token
+      - "5000000000000000000000000"   # 5 tokens
+      - "10000000000000000000000000"  # 10 tokens
+
+scenarios:
+  - name: "Send FT Token"
+    weight: 90
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Benchmark 100 TPS - {{ $timestamp }}"
+          capture:
+            - json: "$.transactionHash"
+              as: "txHash"
+          expect:
+            - statusCode: 200
+            - hasProperty: "transactionHash"
+
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
