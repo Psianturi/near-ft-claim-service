@@ -29,6 +29,7 @@ SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
 CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-}}  # Optional override for cluster workers
 ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-artillery-local.yml}
+NEAR_SANDBOX_VERSION=${NEAR_SANDBOX_VERSION:-2.6.5}
 
 if [ "$SANDBOX_BENCHMARK_10M" = "1" ]; then
     ARTILLERY_PROFILE="benchmark-sandbox-10m.yml"
@@ -102,6 +103,89 @@ log_info "🔧 Setting up environment..."
 # Clean up any existing processes
 cleanup
 sleep 3
+
+# Ensure sandbox downloads use home directory to avoid cross-device rename issues
+SANDBOX_TMPDIR="$HOME/.cache/near-sandbox/tmp"
+SANDBOX_BIN_BASE="$HOME/.cache/near-sandbox/bin"
+mkdir -p "$SANDBOX_TMPDIR" "$SANDBOX_BIN_BASE"
+export TMPDIR="$SANDBOX_TMPDIR"
+export TMP="$SANDBOX_TMPDIR"
+export npm_config_tmp="$SANDBOX_TMPDIR"
+log_info "   - Using sandbox temp dir: $SANDBOX_TMPDIR"
+log_info "   - Sandbox binaries stored in: $SANDBOX_BIN_BASE"
+
+ensure_sandbox_binary() {
+    local version="$NEAR_SANDBOX_VERSION"
+    local bin_dir="$SANDBOX_BIN_BASE/near-sandbox-$version"
+    local bin_path="$bin_dir/near-sandbox"
+
+    if [ -n "${NEAR_SANDBOX_BIN_PATH:-}" ] && [ -x "$NEAR_SANDBOX_BIN_PATH" ]; then
+        log_info "   - Using sandbox binary from NEAR_SANDBOX_BIN_PATH=$NEAR_SANDBOX_BIN_PATH"
+        return
+    fi
+
+    if [ -x "$bin_path" ]; then
+        export NEAR_SANDBOX_BIN_PATH="$bin_path"
+        log_info "   - Reusing cached sandbox binary: $bin_path"
+        return
+    fi
+
+    local tarball="$SANDBOX_TMPDIR/near-sandbox-$version.tar.gz"
+    local os_name=$(uname -s)
+    local arch_name=$(uname -m)
+    local platform_arch=""
+
+    if [ "$os_name" = "Linux" ] && [ "$arch_name" = "x86_64" ]; then
+        platform_arch="Linux-x86_64"
+    elif [ "$os_name" = "Darwin" ] && [ "$arch_name" = "arm64" ]; then
+        platform_arch="Darwin-arm64"
+    else
+        log_error "Unsupported platform for automatic near-sandbox download ($os_name $arch_name)."
+        exit 1
+    fi
+
+    local url="https://s3-us-west-1.amazonaws.com/build.nearprotocol.com/nearcore/${platform_arch}/$version/near-sandbox.tar.gz"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        log_error "curl is required to download near-sandbox. Please install curl and retry."
+        exit 1
+    fi
+
+    log_info "   - Downloading near-sandbox $version binary..."
+    rm -f "$tarball"
+    if ! curl -fsSL "$url" -o "$tarball"; then
+        log_error "Failed to download near-sandbox from $url"
+        exit 1
+    fi
+
+    local extract_dir="$SANDBOX_TMPDIR/extract-$version"
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+
+    if ! tar -xzf "$tarball" -C "$extract_dir"; then
+        log_error "Failed to extract near-sandbox archive"
+        exit 1
+    fi
+
+    rm -f "$tarball"
+
+    local extracted_bin
+    extracted_bin=$(find "$extract_dir" -type f -name near-sandbox | head -n 1 || true)
+    if [ -z "$extracted_bin" ]; then
+        log_error "near-sandbox binary not found in extracted archive"
+        exit 1
+    fi
+
+    mkdir -p "$bin_dir"
+    mv "$extracted_bin" "$bin_path"
+    chmod +x "$bin_path"
+    rm -rf "$extract_dir"
+
+    export NEAR_SANDBOX_BIN_PATH="$bin_path"
+    log_success "near-sandbox binary ready at $NEAR_SANDBOX_BIN_PATH"
+}
+
+ensure_sandbox_binary
 
 # Check prerequisites
 if ! command -v artillery &> /dev/null; then
@@ -252,7 +336,7 @@ else
 fi
 API_PID=$!
 
-if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 60 "API Service"; then
+if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 40 "API Service"; then
     log_error "API service failed to start. Check api.log"
     cat api.log
     exit 1

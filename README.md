@@ -26,7 +26,7 @@ A TypeScript/Express service for orchestrating NEP-141 (fungible token) transfer
 
 ## 2. Requirements
 
-- Node.js ≥ 22.13 for load testing (Node 24 recommended; the service itself still runs on ≥18 but Artillery 2.x enforces ≥22.13)
+- Node.js ≥ 22.13 for load testing (Node 24 recommended; run `nvm use 24` before any `npm`/`npx` command to match CI)
 - npm ≥ 9
 - Rust toolchain (if rebuilding `fungible_token.wasm`)
 - NEAR Sandbox (`npx near-sandbox`) for local runs
@@ -54,7 +54,7 @@ npm install
 
 > Quick start: `.env.example` already contains the shared sandbox signer `service.test.near` and its key pool. Import that file as-is to get running immediately. Follow the steps below only if you need to recreate or rotate the sandbox account.
 
-1. **Boot the sandbox node**
+1. **Boot the sandbox node** (run `nvm use 24` in this shell first)
     ```bash
     npx near-sandbox init
     npx near-sandbox run
@@ -144,7 +144,7 @@ Append each printed key to `MASTER_ACCOUNT_PRIVATE_KEYS` (comma-separated) so th
 
 ## 4. Sandbox runbook
 
-Use this flow whenever a fresh sandbox test is required.
+Use this flow whenever you need a fresh sandbox; activate `nvm use 24` in each terminal before running Node/npm commands.
 
 ### Step 1 — Deploy the FT contract
 
@@ -186,10 +186,11 @@ npm run run:worker:sandbox > worker-local.log 2>&1 &
 Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml`—the new warm-up+ramp adds ~3 minutes (plan for ~13 minutes end-to-end). Load hosts must run **Node.js ≥ 22.13** so Artillery 2.x can start without engine errors. The pipeline starts the API in cluster mode by default (`SANDBOX_USE_CLUSTER=1`); override `SANDBOX_CLUSTER_WORKERS` or disable clustering with `SANDBOX_USE_CLUSTER=0` when you need single-thread baselines.
 
 ```bash
+nvm use 24
 ./testing/artillery/run-artillery-test.sh sandbox
 ```
 
-Artifacts (JSON statistics) are written under `testing/artillery/artillery-results-sandbox-*.json`. Use `./testing/test-complete-pipeline.sh` for the end-to-end sandbox pipeline—it now deploys, bootstraps receivers (`ci/bootstrap-sandbox-accounts.mjs`), executes Artillery with your selected profile, and prints a JSON summary in-line. Set `ARTILLERY_CONFIG=<file.yml>` (or use `SANDBOX_BENCHMARK_10M=1`) to reuse the pipeline profile outside the script.
+Artifacts (JSON statistics) are written under `testing/artillery/artillery-results-sandbox-*.json`. Use `./testing/test-complete-pipeline.sh` for the end-to-end sandbox pipeline—it now deploys, bootstraps receivers (`ci/bootstrap-sandbox-accounts.mjs`), executes Artillery with the selected profile, and prints a JSON summary to the terminal. Always run `nvm use 24` before executing any script. The pipeline automatically caches the `near-sandbox` binary under `~/.cache/near-sandbox/`, so it works safely from any filesystem (including WSL `/mnt/*`). Set `ARTILLERY_CONFIG=<file.yml>` (or enable `SANDBOX_BENCHMARK_10M=1`) when you need a different scenario.
 
 ---
 
