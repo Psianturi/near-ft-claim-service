@@ -21,33 +21,17 @@ transferQueue.on('job', async (job: any) => {
   let signer: any;
   let client: any;
   let account: any;
-  let sandboxKeyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
 
   if (nearInterface.signer) {
     // Using @eclipseeer/near-api-ts (testnet/mainnet)
     signer = nearInterface.signer;
     client = nearInterface.client;
-  } else if (typeof nearInterface.getAccount === 'function') {
-    const sandboxCtx = nearInterface.getAccount();
-    account = sandboxCtx.account;
-    sandboxKeyMeta = {
-      publicKey: sandboxCtx.publicKey,
-      index: sandboxCtx.index,
-      poolSize: sandboxCtx.poolSize,
-    };
   } else if (nearInterface.account) {
+    // Using near-api-js (sandbox)
     account = nearInterface.account;
+    client = nearInterface.near; // For view calls
   } else {
     throw new Error('Invalid NEAR interface returned from getNear()');
-  }
-
-  if (sandboxKeyMeta) {
-    log.debug({
-      receiverId,
-      publicKey: sandboxKeyMeta.publicKey,
-      keyIndex: sandboxKeyMeta.index,
-      keyPoolSize: sandboxKeyMeta.poolSize,
-    }, 'Using sandbox signer from pool');
   }
 
   const transfer = async () => {

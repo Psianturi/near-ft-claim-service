@@ -262,20 +262,26 @@ Logs:
 
 ## 8. Script reference
 
-### 8.1 Shell helpers (`.sh`)
+### 8.1 Core load-testing scripts
+
+| Script | Role | Typical usage |
+| --- | --- | --- |
+| `testing/test-complete-pipeline.sh` | Full sandbox regression: starts a fresh sandbox, deploys the FT contract, bootstraps receivers, launches the clustered API/worker stack, and runs the benchmark profile end-to-end (JSON stats written to `testing/artillery/`). | Use for official bounty evidence, CI verification, or any run where you need a clean environment plus load results in one command. |
+| `testing/artillery/run-artillery-test.sh` | Standalone Artillery driver that targets a pre-running API (`sandbox` or `testnet`) and dumps metrics to timestamped JSON files. Supports custom YAML via `ARTILLERY_CONFIG`. | Use for quick tuning or replaying scenarios after the service is already online (no redeploy, no bootstrap). |
+
+### 8.2 Additional shell helpers
 
 | Script | Command to run | Purpose |
 | --- | --- | --- |
-| `testing/artillery/run-artillery-test.sh` | `./testing/artillery/run-artillery-test.sh sandbox` | Execute the sandbox Artillery scenario and save JSON/HTML reports under `testing/artillery/artillery-results-sandbox-*`. Supports overrides via `ARTILLERY_CONFIG=<file.yml>`. |
+| `testing/artillery/run-artillery-test.sh` | `./testing/artillery/run-artillery-test.sh sandbox` | Execute the sandbox Artillery scenario and save JSON reports under `testing/artillery/artillery-results-sandbox-*`. |
 |  | `./testing/artillery/run-artillery-test.sh testnet` | Execute the testnet Artillery scenario (ensure RPC quotas and FastNEAR key). |
 | `testing/test-complete-pipeline.sh` | `./testing/test-complete-pipeline.sh` | End-to-end pipeline: deploy sandbox contract, bootstrap receivers, run smoke tests, then trigger the sandbox Artillery profile. Set `SANDBOX_BENCHMARK_10M=1` for the 600-second benchmark or `ARTILLERY_CONFIG=<file.yml>` to point at a custom scenario. |
-| `ci/run-local-sandbox.sh` | `./ci/run-local-sandbox.sh` | Spin up a local sandbox node plus helper processes (used by CI, also handy for local bring-up). |
 | `Artillery CLI` | `npx artillery report <json> --output report.html` | Convert saved JSON output into an HTML report for sharing. |
 
 > Shell utilities live under `testing/` (Artillery) and the repo root (`ci/`). Run `chmod +x testing/**/*.sh ci/*.sh` once if your checkout stripped executable bits.
 > The sandbox benchmark now ships with an extended warm-up and ramp to reduce nonce spikes; clone the YAML if you need an even gentler profile or want to reintroduce aggressive surge phases.
 
-### 8.2 Node/npm scripts
+### 8.3 Node/npm scripts
 
 | Command | Purpose |
 | --- | --- |
@@ -286,6 +292,15 @@ Logs:
 | `npm run start:testnet` / `npm run run:worker:testnet` | Testnet equivalents reading `.env.testnet`. |
 | `npm run test:sandbox` / `npm run test:testnet` | near-workspaces smoke suites for each environment. |
 | `npm run typecheck` / `npm run build` | TypeScript project validation and compilation. |
+
+### 8.4 CI utility scripts (`ci/`)
+
+| Script | Purpose |
+| --- | --- |
+| `ci/deploy-sandbox-rpc.mjs` | Deploys and initialises the FT contract against the active sandbox RPC using the signer configured in environment variables. Used by the pipeline prior to running any tests. |
+| `ci/bootstrap-sandbox-accounts.mjs` | Creates receiver subaccounts (or reuses existing ones) and registers their FT storage deposits so load tests don’t trip “account not registered”. |
+| `ci/setup-test-accounts.mjs` | Heavyweight helper for end-to-end CI that patches NEAR borsh schemas, prepares key stores, and mints / registers everything needed for integration suites. |
+| `ci/assert-receiver-balance.mjs` | Sanity assertion script that checks a target receiver holds at least `MINIMUM_BALANCE` FT units—handy in CI smoke jobs. |
 
 ---
 

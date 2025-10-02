@@ -10,10 +10,10 @@
     "test:frontend": "playwright test",
     "test:frontend:headed": "playwright test --headed --project=chromium",
     "security": "audit-ci --fail-on critical",
-    "start:testnet": "tsx src/index.ts",
-    "start:sandbox": "NEAR_ENV=sandbox tsx src/index.ts",
-    "start:testnet:cluster": "tsx src/cluster.ts",
-    "start:sandbox:cluster": "NEAR_ENV=sandbox tsx src/cluster.ts",
+  "start:testnet": "tsx src/index.ts",
+  "start:testnet:cluster": "tsx src/cluster.ts",
+  "start:sandbox": "NEAR_ENV=sandbox tsx src/index.ts",
+  "start:sandbox:cluster": "NEAR_ENV=sandbox tsx src/cluster.ts",
     "start": "npm run start:testnet",
     "run:worker:testnet": "tsx src/run-worker.ts",
     "run:worker:sandbox": "NEAR_ENV=sandbox tsx src/run-worker.ts",
@@ -55,8 +55,7 @@
     "p-retry": "^7.0.0",
     "pino": "^9.12.0",
     "pino-pretty": "^13.1.1",
-    "rate-limiter-flexible": "^7.3.2",
-    "undici": "^6.18.1"
+    "rate-limiter-flexible": "^7.3.2"
   },
   "overrides": {
     "base-x": "3.0.11"

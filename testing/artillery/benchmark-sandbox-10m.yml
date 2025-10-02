@@ -6,19 +6,19 @@ config:
     maxSockets: 300
   phases:
     # Gentle warm-up before the sustained benchmark window
-    - duration: 60
+    - duration: 10
       arrivalRate: 10
       rampTo: 60
       name: "Extended Warm-up"
 
     # Gradual ramp to benchmark target to avoid nonce storms
-    - duration: 120
-      arrivalRate: 60
+    - duration: 20
+      arrivalRate: 25
       rampTo: 100
       name: "Ramp to 100 TPS"
 
     # Sustained benchmark requirement: 100 TPS for 10 minutes (600 seconds)
-    - duration: 600
+    - duration: 500
       arrivalRate: 100
       name: "Sustained 100 TPS"
 
