@@ -128,6 +128,7 @@ NODE
 Append each printed key to `MASTER_ACCOUNT_PRIVATE_KEYS` (comma-separated) so the worker pool can rotate signers.
 
 > ℹ️ The service now round-robins every request across the keys listed in `MASTER_ACCOUNT_PRIVATE_KEYS` (sandbox and testnet). Keep the pool size aligned with active workers to minimise nonce contention.
+> Set `SANDBOX_MAX_IN_FLIGHT_PER_KEY` to cap simultaneous transactions per key (default 4 in `.env.example`); raise this gradually only after monitoring for `InvalidNonce` errors.
 
 ### 3.4 Testnet keys
 
@@ -183,7 +184,7 @@ npm run run:worker:sandbox > worker-local.log 2>&1 &
 
 ### Step 4 — Load test
 
-Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml`—the new warm-up+ramp adds ~3 minutes (plan for ~13 minutes end-to-end). Load hosts must run **Node.js ≥ 22.13** so Artillery 2.x can start without engine errors. The pipeline starts the API in cluster mode by default (`SANDBOX_USE_CLUSTER=1`); override `SANDBOX_CLUSTER_WORKERS` or disable clustering with `SANDBOX_USE_CLUSTER=0` when you need single-thread baselines.
+Run the scenario via the helper script and refer to the [Artillery Testing Guide](ARTILLERY_TESTING_GUIDE.md) for arrival rates, troubleshooting, and performance tuning tips. Set `SANDBOX_SMOKE_TEST=1` for the new 90-second smoke run or `SANDBOX_BENCHMARK_10M=1` to switch the pipeline to the sustained 600-second / 100 TPS profile defined in `testing/artillery/benchmark-sandbox-10m.yml`—the extended warm-up+ramp adds ~3 minutes (plan for ~13 minutes end-to-end). Load hosts must run **Node.js ≥ 22.13** so Artillery 2.x can start without engine errors. The pipeline starts the API in cluster mode by default (`SANDBOX_USE_CLUSTER=1`); override `SANDBOX_CLUSTER_WORKERS` or disable clustering with `SANDBOX_USE_CLUSTER=0` when you need single-thread baselines.
 
 ```bash
 nvm use 24
@@ -240,6 +241,26 @@ Benchmark scripts live in `testing/artillery/benchmark-sandbox.yml`, `testing/ar
    ./testing/artillery/run-artillery-test.sh testnet
    ```
    Ensure RPC quotas are large enough or add secondary `RPC_URLS` for failover.
+
+### 6.1 Testnet high-throughput tuning checklist
+
+When chasing ≥100 TPS on public testnet, apply the following before each load run:
+
+1. **Expand the signer pool.** Generate extra function-call keys for `MASTER_ACCOUNT` (one key per 2–3 workers). Example near-cli flow:
+   ```bash
+   near generate-key extra1.$MASTER_ACCOUNT --networkId testnet
+   near account add-key $MASTER_ACCOUNT $(jq -r .public_key ~/.near-credentials/testnet/extra1.$MASTER_ACCOUNT.json) \
+     --contract-id $FT_CONTRACT --method-names ft_transfer,storage_deposit \
+     --networkId testnet --nodeUrl https://rpc.testnet.fastnear.com
+   ```
+   Append the printed `private_key` values to `MASTER_ACCOUNT_PRIVATE_KEYS` in `.env.testnet` (comma-separated). Keep the legacy `MASTER_ACCOUNT_PRIVATE_KEY` as a fallback.
+2. **Restart the service** so the new `WORKER_COUNT` and key list load. Confirm in `service-testnet.log` that `keyCount` equals the number of keys you added and that `workers` matches the environment variable.
+3. **Review timeout settings.** `WAIT_UNTIL=Executed` guarantees final execution but can inflate latency; when experimenting, try `WAIT_UNTIL=IncludedFinal` and raise `SERVER_TIMEOUT_MS`/`REQUEST_TIMEOUT_MS` in `.env.testnet` if you expect longer on-chain confirmation latency.
+4. **Distribute RPC traffic.** Populate `RPC_URLS` with multiple providers (FastNEAR + public RPC) to reduce throttling. The client automatically round-robins each request.
+5. **Smoke test** `/send-ft` once the service restarts. A 200 response with sub-second latency indicates the signer pool is healthy.
+6. **Run the benchmark** via `./testing/artillery/run-artillery-test.sh testnet`, then archive the JSON (under `testing/artillery/`) along with key metrics (success count, ETIMEDOUT, tail latency) for comparison.
+
+If success rates dip after increasing `WORKER_COUNT`, double-check that the process was restarted and that every worker has a dedicated key; otherwise nonce contention will surface as 500 responses and ETIMEDOUT errors in Artillery.
 
 ---
 
