@@ -201,17 +201,19 @@ Artifacts (JSON statistics) are written under `testing/artillery/artillery-resul
 | --- | --- | --- | --- | --- | --- | --- |
 | 2025-10-01 | Sandbox (cluster auto, Node 18) | auto (~8) | 1 key | 93 | 0.72% | `errors.ETIMEDOUT`, `errors.ECONNRESET`, nonce retries |
 | 2025-10-01 | Testnet | 5 | 1 key | 93 | 0.43% | FastNEAR rate limiting (-429), RPC timeouts |
+| 2025-10-03 | Testnet (Node 24) | 8 | 8 keys | 110 | 2.37% | `errors.ETIMEDOUT`, `http.codes.500` (insufficient balance) |
 
 ### 5.1 Roadmap to the 60k-transfer benchmark
 
 - **Goal recap**: 100 successful FT transfers per second for 10 minutes (≈ 60,000 transfers). The profile lives at `testing/artillery/benchmark-sandbox-10m.yml` and is enabled via `SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh`.
-- **Current bottleneck**: Sandbox runs saturate a single signer key—`nonce retries exceeded` dominates once 25k+ requests race for the same key, even after pre-registering receivers.
+- **Current bottleneck**: Sandbox runs saturate a single signer key—`nonce retries exceeded` dominates once 25k+ requests race for the same key, even after pre-registering receivers. Testnet now fares better with an 8-key pool, but RPC saturation and unbatched transfers still cap success at ~24 TPS (2.37% of requests).
 - **Mitigation plan**:
    1. Expand the signer key pool (one access key per worker / ~20 TPS) and rotate them via `MASTER_ACCOUNT_PRIVATE_KEYS`.
    2. Upgrade the load harness to Node 22+ and keep the new Artillery keep-alive/timeout settings so sockets aren’t churned under pressure.
    3. Keep the API in cluster mode and favour batched `/send-ft` payloads so each transaction carries many transfers; temporarily lower `CONCURRENCY_LIMIT`/`MAX_IN_FLIGHT` in `.env` to avoid nonce storms until rotation lands.
-   4. Rerun the 10-minute profile and confirm ≥ 60,000 `http.codes.200` successes; capture deltas under `test-results/` for posterity.
-   5. Apply the same key fan-out to testnet, pairing it with additional FastNEAR or RPC endpoints to maintain throughput without throttling.
+   4. Scale the signer pool in lockstep with workers (sandbox goal: ≥1 key per worker, testnet target: 10 workers / 10 keys) and enforce per-key in-flight limits to keep nonces sequential.
+   5. Rerun the 10-minute profile and confirm ≥ 60,000 `http.codes.200` successes; capture deltas under `test-results/` for posterity.
+   6. Apply the same key fan-out to testnet, pairing it with additional FastNEAR or RPC endpoints to maintain throughput without throttling, and document both the full benchmark and lighter validation runs.
 
 Benchmark scripts live in `testing/artillery/benchmark-sandbox.yml`, `testing/artillery/benchmark-testnet.yml`, and `testing/artillery/run-artillery-test.sh`.
 
@@ -241,6 +243,7 @@ Benchmark scripts live in `testing/artillery/benchmark-sandbox.yml`, `testing/ar
    ./testing/artillery/run-artillery-test.sh testnet
    ```
    Ensure RPC quotas are large enough or add secondary `RPC_URLS` for failover.
+   For extended runs, set `WORKER_COUNT=10` and ensure `MASTER_ACCOUNT_PRIVATE_KEYS` is populated with ten unique keys before restarting the API and worker.
 
 ### 6.1 Testnet high-throughput tuning checklist
 
@@ -259,8 +262,17 @@ When chasing ≥100 TPS on public testnet, apply the following before each load 
 4. **Distribute RPC traffic.** Populate `RPC_URLS` with multiple providers (FastNEAR + public RPC) to reduce throttling. The client automatically round-robins each request.
 5. **Smoke test** `/send-ft` once the service restarts. A 200 response with sub-second latency indicates the signer pool is healthy.
 6. **Run the benchmark** via `./testing/artillery/run-artillery-test.sh testnet`, then archive the JSON (under `testing/artillery/`) along with key metrics (success count, ETIMEDOUT, tail latency) for comparison.
+7. **Tune the arrival profile.** Start with a lighter profile (e.g. create `testing/artillery/benchmark-testnet-light.yml` that ramps from 40→100 TPS) to validate batching and RPC distribution before attempting the 100→200 TPS stress phase in `benchmark-testnet.yml`.
 
 If success rates dip after increasing `WORKER_COUNT`, double-check that the process was restarted and that every worker has a dedicated key; otherwise nonce contention will surface as 500 responses and ETIMEDOUT errors in Artillery.
+
+**Latest snapshot (2025-10-03, 8 workers / 8 keys):**
+
+- 43,700 total requests, 1,036 HTTP 200 responses (~24 TPS achieved).
+- 33,554 ETIMEDOUT and 9,110 HTTP 500 responses (`The account doesn't have enough balance`).
+- Median latency 1.94 s, p95 latency 7.26 s. Additional batching and RPC pooling remain the priority improvements.
+
+Increase workers to 10 in tandem with key generation before the next full benchmark so the service can maintain throughput gains once batching and RPC tuning are in place.
 
 ---
 
@@ -287,7 +299,7 @@ Logs:
 
 | Script | Role | Typical usage |
 | --- | --- | --- |
-| `testing/test-complete-pipeline.sh` | Full sandbox regression: starts a fresh sandbox, deploys the FT contract, bootstraps receivers, launches the clustered API/worker stack, and runs the benchmark profile end-to-end (JSON stats written to `testing/artillery/`). | Use for official bounty evidence, CI verification, or any run where you need a clean environment plus load results in one command. |
+| `testing/test-complete-pipeline.sh` | Full sandbox regression: starts a fresh sandbox, deploys the FT contract, bootstraps receivers, launches the clustered API/worker stack, and runs the benchmark profile end-to-end (JSON stats written to `testing/artillery/`). | Use for reproducible end-to-end regression evidence, CI verification, or any run where you need a clean environment plus load results in one command. |
 | `testing/artillery/run-artillery-test.sh` | Standalone Artillery driver that targets a pre-running API (`sandbox` or `testnet`) and dumps metrics to timestamped JSON files. Supports custom YAML via `ARTILLERY_CONFIG`. | Use for quick tuning or replaying scenarios after the service is already online (no redeploy, no bootstrap). |
 
 ### 8.2 Additional shell helpers
