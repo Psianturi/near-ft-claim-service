@@ -219,5 +219,5 @@ Error recovery: ✅ Service remained stable
 
 ---
 *Test conducted on: 2025-09-24*
-*Testnet Account: posm.testnet*
-*FT Contract: posm.testnet*
+*Testnet Account: <master-account.testnet>*
+*FT Contract: <ft-contract.testnet>*
