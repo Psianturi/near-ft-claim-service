@@ -11,6 +11,8 @@ A TypeScript/Express service that queues and signs NEP-141 transfers for NEAR ac
 - **Environment awareness** – `.env` (sandbox) and `.env.testnet` keep credentials isolated.
 - **Tooling** – Artillery profiles, Playwright smoke tests, and helper scripts for deployment and minting.
 
+**Recent updates:** tuned per-key throttle defaults, refreshed frontend presets, and added CI notes for the load-testing pipeline.
+
 Use this service when you need a repeatable way to distribute fungible tokens with controlled throughput.
 
 ---
