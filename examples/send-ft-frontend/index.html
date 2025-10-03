@@ -30,6 +30,39 @@
             />
           </label>
 
+          <div class="presets" aria-live="polite">
+            <span class="presets-label">Quick presets</span>
+            <div class="preset-buttons">
+              <button
+                type="button"
+                class="preset-btn"
+                data-base-url="http://127.0.0.1:3000"
+                data-preset-name="Local sandbox (http://127.0.0.1:3000)"
+              >
+                Local sandbox
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                data-base-url="http://127.0.0.1:3000"
+                data-preset-name="Local testnet (http://127.0.0.1:3000)"
+              >
+                Local testnet
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                data-base-url="https://your-api.example.com"
+                data-preset-name="Remote deployment (https://your-api.example.com)"
+              >
+                Remote (replace host)
+              </button>
+            </div>
+            <p class="preset-hint">
+              Sandbox and testnet presets assume the service runs locally on port 3000. For hosted deployments, use the remote preset then swap in your public URL.
+            </p>
+          </div>
+
           <label>
             Receiver account ID
             <input
@@ -69,6 +102,10 @@
       <section class="panel">
         <h2>Response</h2>
         <pre id="response" aria-live="polite">Waiting for request…</pre>
+        <details id="raw-response" hidden>
+          <summary>Show raw response payload</summary>
+          <pre id="raw-response-body"></pre>
+        </details>
       </section>
 
       <section class="panel">

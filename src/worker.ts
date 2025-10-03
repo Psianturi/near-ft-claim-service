@@ -2,16 +2,13 @@ import transferQueue from './queue.js';
 import { getNear } from './near.js';
 import { config } from './config.js';
 import pRetry from 'p-retry';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
-import { functionCall, teraGas, yoctoNear } from '@eclipseeer/near-api-ts';
+import { functionCall, teraGas } from '@eclipseeer/near-api-ts';
 import { createLogger } from './logger.js';
-
-const rateLimiter = new RateLimiterMemory({
-  points: 100, // 100 points
-  duration: 1, // per second
-});
+import { throttleGlobal, throttleKey, getThrottleConfig } from './key-throttle.js';
 
 const log = createLogger({ module: 'worker' });
+const throttleConfig = getThrottleConfig();
+log.info({ throttleConfig }, 'Worker throttle configuration loaded');
 
 transferQueue.on('job', async (job: any) => {
   const { receiverId, amount, memo } = job;
@@ -21,20 +18,65 @@ transferQueue.on('job', async (job: any) => {
   let signer: any;
   let client: any;
   let account: any;
+  let signerLease: {
+    signer: any;
+    publicKey: string;
+    index: number;
+    poolSize: number;
+    release: () => void;
+  } | null = null;
+  let sandboxLease: {
+    account: any;
+    near: any;
+    publicKey: string;
+    index: number;
+    poolSize: number;
+    release: () => void;
+  } | null = null;
+  let keyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
 
   if (nearInterface.signer) {
-    // Using @eclipseeer/near-api-ts (testnet/mainnet)
-    signer = nearInterface.signer;
-    client = nearInterface.client;
+    if (typeof nearInterface.acquireSigner === 'function') {
+      const lease = await nearInterface.acquireSigner();
+      signerLease = lease;
+      signer = lease.signer;
+      client = nearInterface.client;
+      keyMeta = {
+        publicKey: lease.publicKey,
+        index: lease.index,
+        poolSize: lease.poolSize,
+      };
+    } else {
+      // Fallback to shared signer (no explicit leasing)
+      signer = nearInterface.signer;
+      client = nearInterface.client;
+    }
   } else if (nearInterface.account) {
     // Using near-api-js (sandbox)
-    account = nearInterface.account;
-    client = nearInterface.near; // For view calls
+    if (typeof nearInterface.acquireAccount === 'function') {
+      const lease = await nearInterface.acquireAccount();
+      sandboxLease = lease;
+      account = lease.account;
+      client = lease.near;
+      keyMeta = {
+        publicKey: lease.publicKey,
+        index: lease.index,
+        poolSize: lease.poolSize,
+      };
+    } else {
+      account = nearInterface.account;
+      client = nearInterface.near; // For view calls
+    }
   } else {
     throw new Error('Invalid NEAR interface returned from getNear()');
   }
 
+  const keyIdentifier = keyMeta?.publicKey ?? config.masterAccount;
+
   const transfer = async () => {
+    await throttleGlobal();
+    await throttleKey(keyIdentifier);
+
     // Helper to decode view-call results (raw bytes -> JSON)
     const decodeJson = ({ rawResult }: { rawResult: number[] }) => {
       try {
@@ -172,12 +214,11 @@ transferQueue.on('job', async (job: any) => {
       });
     }
 
-    log.info({ receiverId }, 'Transfer succeeded');
+    log.info({ receiverId, key: keyIdentifier, keyIndex: keyMeta?.index, keyPoolSize: keyMeta?.poolSize }, 'Transfer succeeded');
     return result;
   };
 
   try {
-    await rateLimiter.consume(config.masterAccount);
     await pRetry(transfer, {
       retries: 5,
       factor: 2,
@@ -186,8 +227,11 @@ transferQueue.on('job', async (job: any) => {
       randomize: true,
     });
   } catch (error) {
-    log.error({ receiverId, err: error }, 'Transfer failed');
+    log.error({ receiverId, err: error, key: keyIdentifier }, 'Transfer failed');
     throw error;
+  } finally {
+    sandboxLease?.release();
+    signerLease?.release();
   }
 });
 

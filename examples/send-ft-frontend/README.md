@@ -17,22 +17,29 @@ cd examples/send-ft-frontend
 npx http-server
 ```
 
-Open the printed URL (typically http://127.0.0.1:8080) and update the **API base URL** field if your backend runs somewhere else.
+Open the printed URL (typically http://127.0.0.1:8080). Pick one of the **Quick presets** to fill the API base URL (local sandbox, local testnet, or a remote placeholder) or type your own value. The form remembers the last values you entered via `localStorage` so you only have to set them once per browser.
 
 ## API base URL cheatsheet
 
 | Environment | When to use | Base URL example | Notes |
 |-------------|-------------|------------------|-------|
-| Sandbox (local) | Running `npm run start:sandbox` on the same machine | `http://127.0.0.1:3000` | This points to the Express service that signs and queues transfers locally. |
+| Sandbox (local) | Running `npm run start:sandbox` on the same machine | `http://127.0.0.1:3000` | Only use if every receiver account has already called `storage_deposit`; otherwise the token transfer will panic. |
 | Testnet (local runner) | Running `npm run start:testnet` on the same machine | `http://127.0.0.1:3000` | Even though transactions go to NEAR testnet, the REST API still runs locally. |
 | Remote deployment | API hosted elsewhere (e.g. EC2, Docker, Fly.io) | `https://your-domain.example.com` | Replace with the public URL where the FT API service is exposed. |
+
+### Which environment should I use?
+
+- **Testnet** is the default for the demo. The contract auto-registers storage as needed (`SKIP_STORAGE_CHECK=false`), so any valid testnet account can receive tokens immediately.
+- **Sandbox** is useful for local experiments but requires you to pre-register every receiver with `storage_deposit`. The demo will surface the raw “account is not registered” error when this prerequisite is missing.
 
 
 ## Using the form
 1. Enter the target receiver account ID and the amount (in yocto).
 2. Optionally add a memo.
-3. Click **Send tokens** to POST to `/send-ft`.
-4. Inspect the **Response** panel for JSON output and use the **Check health** shortcut to hit `/health`.
+3. (Optional) Use the quick preset buttons to switch environments instantly. The selected base URL is logged for traceability.
+4. Click **Send tokens** to POST to `/send-ft`.
+5. Inspect the **Response** panel for JSON output and use the **Check health** shortcut to hit `/health`.
+	- If you see `The account <id> is not registered`, the API was run with storage checks disabled. Either enable them (`SKIP_STORAGE_CHECK=false`) or pre-register the account with `storage_deposit` before retrying.
 
 The request log at the bottom lists each call with a timestamp to help with manual testing and debugging.
 

@@ -12,10 +12,13 @@ import { config } from './config.js';
 import { functionCall, teraGas } from '@eclipseeer/near-api-ts';
 import { safeView } from './near-utils.js';
 import { createLogger } from './logger.js';
+import { throttleGlobal, throttleKey, getThrottleConfig } from './key-throttle.js';
 
 const log = createLogger({ module: 'server' });
 const metricsLog = log.child({ component: 'metrics' });
 const requestLog = log.child({ component: 'transfer' });
+const throttleConfig = getThrottleConfig();
+log.info({ throttleConfig }, 'API throttle configuration loaded');
 
 process.on('uncaughtException', (err: any, origin: any) => {
   log.fatal({ err, origin }, 'Uncaught exception, terminating process');
@@ -29,6 +32,11 @@ log.info({ config }, 'Final configuration loaded');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+const SERVER_TIMEOUT_MS = parseInt(process.env.SERVER_TIMEOUT_MS || '60000', 10);
+const REQUEST_TIMEOUT_MS = parseInt(
+  process.env.REQUEST_TIMEOUT_MS || String(Math.max(SERVER_TIMEOUT_MS, 60000)),
+  10,
+);
 
 const allowedOrigins = (process.env.CORS_ALLOW_ORIGINS || '*')
   .split(',')
@@ -53,11 +61,11 @@ const server = app.listen(port, host, () => {
 });
 
 // Configure server for maximum performance (600+ TPS) - inspired by Rust implementation
-server.setTimeout(5000); // Very fast timeout like Rust
-server.maxConnections = 50000; // Increased from 10000 for high concurrency
-server.keepAliveTimeout = 15000; // Shorter keep alive
-server.headersTimeout = 16000; // Headers timeout
-server.requestTimeout = 10000; // Request timeout
+server.setTimeout(SERVER_TIMEOUT_MS);
+server.maxConnections = 50000; 
+server.keepAliveTimeout = 15000; 
+server.headersTimeout = Math.max(SERVER_TIMEOUT_MS + 5000, 20000); 
+server.requestTimeout = REQUEST_TIMEOUT_MS; 
 
 // Configure HTTP agents for connection pooling and keep-alive
 const httpAgent = new http.Agent({
@@ -94,6 +102,7 @@ const QUEUE_SIZE = parseInt(process.env.QUEUE_SIZE || '50000', 10); // Massive q
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '50', 10); // Large batches
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || '4', 10); // Testing with 4 workers for sandbox
 const MAX_IN_FLIGHT = parseInt(process.env.MAX_IN_FLIGHT || '200', 10); // Like Rust MAX_IN_FLIGHT
+const NONCE_RETRY_LIMIT = parseInt(process.env.NONCE_RETRY_LIMIT || '3', 10);
 
 class ConcurrencyManager {
   constructor(private readonly log = createLogger({ module: 'server', component: 'concurrency' })) {}
@@ -354,6 +363,14 @@ const extractErrorMessage = (error: any): string => {
   return 'Unknown error occurred during transaction processing';
 };
 
+const getInvalidNonceDetails = (error: any) => {
+  const fromCause = error?.cause?.data?.TxExecutionError?.InvalidTxError?.InvalidNonce;
+  if (fromCause) return fromCause;
+  return error?.cause?.cause?.data?.TxExecutionError?.InvalidTxError?.InvalidNonce ?? null;
+};
+
+const isInvalidNonceError = (error: any) => Boolean(getInvalidNonceDetails(error));
+
 const findFailureInOutcome = (outcome: any): any | null => {
   if (!outcome) return null;
 
@@ -474,116 +491,146 @@ app.post('/send-ft', async (req: Request, res: Response) => {
 
     // NEAR connection is initialized at server startup
     const nearInterface = getNear();
+    const isSandbox = (process.env.NEAR_ENV || config.networkId) === 'sandbox';
 
-    // Handle hybrid approach: different interfaces for different libraries
-    let signer: any;
-    let client: any;
-    let account: any;
-    let sandboxKeyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
+    let signer: any = null;
+    let client: any = null;
+    let account: any = null;
+    let sandboxLease: {
+      account: any;
+      near: any;
+      publicKey: string;
+      index: number;
+      poolSize: number;
+      release: () => void;
+    } | null = null;
+    let signerLease: {
+      signer: any;
+      publicKey: string;
+      index: number;
+      poolSize: number;
+      release: () => void;
+    } | null = null;
+    let keyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
+    let keyIdentifier = config.masterAccount;
 
-    if (process.env.NEAR_ENV === 'sandbox') {
-      if (typeof nearInterface?.getAccount === 'function') {
-        const sandboxCtx = nearInterface.getAccount();
-        account = sandboxCtx.account;
-        sandboxKeyMeta = {
-          publicKey: sandboxCtx.publicKey,
-          index: sandboxCtx.index,
-          poolSize: sandboxCtx.poolSize,
-        };
-      } else if (nearInterface?.account) {
-        account = nearInterface.account;
+    try {
+      if (isSandbox) {
+        if (typeof nearInterface?.acquireAccount === 'function') {
+          const lease = await nearInterface.acquireAccount();
+          sandboxLease = lease;
+          account = lease.account;
+          keyMeta = {
+            publicKey: lease.publicKey,
+            index: lease.index,
+            poolSize: lease.poolSize,
+          };
+          keyIdentifier = keyMeta.publicKey;
+        } else if (nearInterface?.account) {
+          account = nearInterface.account;
+        } else {
+          return res.status(500).send({ error: 'Sandbox account not initialized' });
+        }
+
+        requestLog.debug({
+          accountId: account.accountId,
+          publicKey: keyMeta?.publicKey,
+          keyIndex: keyMeta?.index,
+          keyPoolSize: keyMeta?.poolSize,
+        }, 'Sandbox signer prepared');
+        requestLog.debug({ contractId: config.ftContract }, 'Sandbox FT contract resolved');
       } else {
-        return res.status(500).send({ error: 'Sandbox account not initialized' });
+        if (!nearInterface.signer) {
+          return res.status(500).send({ error: 'Testnet signer not initialized' });
+        }
+        if (typeof nearInterface.acquireSigner === 'function') {
+          const lease = await nearInterface.acquireSigner();
+          signerLease = lease;
+          signer = lease.signer;
+          client = nearInterface.client;
+          keyMeta = {
+            publicKey: lease.publicKey,
+            index: lease.index,
+            poolSize: lease.poolSize,
+          };
+          keyIdentifier = keyMeta.publicKey;
+          requestLog.debug({
+            key: keyMeta.publicKey,
+            keyIndex: keyMeta.index,
+            keyPoolSize: keyMeta.poolSize,
+          }, 'Allocated testnet signer key');
+        } else {
+          signer = nearInterface.signer;
+          client = nearInterface.client;
+        }
       }
 
-      requestLog.debug({
-        accountId: account.accountId,
-        publicKey: sandboxKeyMeta?.publicKey,
-        keyIndex: sandboxKeyMeta?.index,
-        keyPoolSize: sandboxKeyMeta?.poolSize,
-      }, 'Sandbox signer prepared');
-      requestLog.debug({ contractId: config.ftContract }, 'Sandbox FT contract resolved');
-    } else {
-      // Use @eclipseeer/near-api-ts for testnet
-      if (!nearInterface.signer) {
-        return res.status(500).send({ error: 'Testnet signer not initialized' });
-      }
-      signer = nearInterface.signer;
-      client = nearInterface.client;
-    }
+      const decodeJson = ({ rawResult }: { rawResult: number[] }) => {
+        try {
+          const text = new TextDecoder().decode(Uint8Array.from(rawResult));
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      };
 
-    // Helper to decode view-call results (raw bytes -> JSON)
-    const decodeJson = ({ rawResult }: { rawResult: number[] }) => {
-      try {
-        const text = new TextDecoder().decode(Uint8Array.from(rawResult));
-        return JSON.parse(text);
-      } catch {
-        return null;
-      }
-    };
+      const uniqueReceivers = [...new Set(transferList.map(t => t.receiverId))];
+      const storageChecks: { [receiverId: string]: boolean } = {};
+      const skipStorageCheck = (process.env.SKIP_STORAGE_CHECK || '').toLowerCase() === 'true';
+      let bounds: any = null;
 
-    // 1) Collect all unique receivers for storage checks
-    const uniqueReceivers = [...new Set(transferList.map(t => t.receiverId))];
-
-    // 2) Check storage registration for all receivers (batch check)
-    const storageChecks: { [receiverId: string]: boolean } = {};
-    const skipStorageCheck = (process.env.SKIP_STORAGE_CHECK || '').toLowerCase() === 'true';
-    let bounds: any = null;
-
-    if (!skipStorageCheck) {
-      // Get storage bounds once (shared across all transfers)
-      if (signer) {
-        bounds = await withRetry(() =>
-          client.callContractReadFunction({
-            contractAccountId: config.ftContract,
-            fnName: 'storage_balance_bounds',
-            response: { resultTransformer: decodeJson },
-          })
-        );
-      } else {
-        bounds = await withRetry(() =>
-          safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_bounds', {})
-        );
-      }
-
-      // Check storage for each unique receiver
-      for (const receiverId of uniqueReceivers) {
-        let storage: any;
+      if (!skipStorageCheck) {
         if (signer) {
-          storage = await withRetry(() =>
+          bounds = await withRetry(() =>
             client.callContractReadFunction({
               contractAccountId: config.ftContract,
-              fnName: 'storage_balance_of',
-              fnArgsJson: { account_id: receiverId },
+              fnName: 'storage_balance_bounds',
               response: { resultTransformer: decodeJson },
             })
           );
         } else {
-          storage = await withRetry(() =>
-            safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_of', { account_id: receiverId })
+          bounds = await withRetry(() =>
+            safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_bounds', {})
           );
         }
 
-        const storageJson: any = storage ?? {};
-        const registeredAmountStr = String(storageJson.total ?? storageJson.available ?? '0');
-        const isRegistered = storageJson != null && (() => {
-          try {
-            return BigInt(registeredAmountStr) > 0n;
-          } catch {
-            return false;
+        for (const receiverId of uniqueReceivers) {
+          let storage: any;
+          if (signer) {
+            storage = await withRetry(() =>
+              client.callContractReadFunction({
+                contractAccountId: config.ftContract,
+                fnName: 'storage_balance_of',
+                fnArgsJson: { account_id: receiverId },
+                response: { resultTransformer: decodeJson },
+              })
+            );
+          } else {
+            storage = await withRetry(() =>
+              safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_of', { account_id: receiverId })
+            );
           }
-        })();
 
-        storageChecks[receiverId] = isRegistered;
+          const storageJson: any = storage ?? {};
+          const registeredAmountStr = String(storageJson.total ?? storageJson.available ?? '0');
+          const isRegistered = storageJson != null && (() => {
+            try {
+              return BigInt(registeredAmountStr) > 0n;
+            } catch {
+              return false;
+            }
+          })();
+
+          storageChecks[receiverId] = isRegistered;
+        }
       }
-    }
 
     // 3) Build storage deposit + transfer actions
     const depositsRequired = !skipStorageCheck
       ? uniqueReceivers.filter((receiverId) => !storageChecks[receiverId])
       : [];
 
-    const storageDepositAmount = (() => {
+      const storageDepositAmount = (() => {
       if (bounds && typeof bounds === 'object') {
         if (typeof bounds.min === 'string') return bounds.min;
         if (typeof bounds.min === 'number') return String(bounds.min);
@@ -595,7 +642,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       return '1250000000000000000000';
     })();
 
-    requestLog.debug(
+      requestLog.debug(
       {
         skipStorageCheck,
         storageChecks,
@@ -605,7 +652,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       'Storage registration summary',
     );
 
-    const transferActions: any[] = transferList.map((transfer) =>
+      const transferActions: any[] = transferList.map((transfer) =>
       functionCall({
         fnName: 'ft_transfer',
         fnArgsJson: {
@@ -618,7 +665,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       }),
     );
 
-    const storageDepositActions: any[] = depositsRequired.map((receiverId) =>
+      const storageDepositActions: any[] = depositsRequired.map((receiverId) =>
       functionCall({
         fnName: 'storage_deposit',
         fnArgsJson: {
@@ -630,51 +677,51 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       }),
     );
 
-    const apiTsActions: any[] = [...storageDepositActions, ...transferActions];
+      const apiTsActions: any[] = [...storageDepositActions, ...transferActions];
 
-    let nearJsActions: any[] = [];
-    if (account) {
-      const { transactions, utils } = await import('near-api-js');
+      let nearJsActions: any[] = [];
+      if (account) {
+        const { transactions, utils } = await import('near-api-js');
 
-      const encodeArgs = (args: Record<string, unknown>) => Buffer.from(JSON.stringify(args));
-      const GAS = BigInt('30000000000000');
-      const toYoctoBigInt = (value: string) => {
-        if (/^\d+$/.test(value)) {
-          return BigInt(value);
-        }
-        const parsed = utils.format.parseNearAmount(value);
-        if (!parsed) {
-          throw new Error(`Unable to parse yocto value from ${value}`);
-        }
-        return BigInt(parsed);
-      };
+        const encodeArgs = (args: Record<string, unknown>) => Buffer.from(JSON.stringify(args));
+        const GAS = BigInt('30000000000000');
+        const toYoctoBigInt = (value: string) => {
+          if (/^\d+$/.test(value)) {
+            return BigInt(value);
+          }
+          const parsed = utils.format.parseNearAmount(value);
+          if (!parsed) {
+            throw new Error(`Unable to parse yocto value from ${value}`);
+          }
+          return BigInt(parsed);
+        };
 
-      const depositActions = depositsRequired.map((receiverId) =>
-        transactions.functionCall(
-          'storage_deposit',
-          encodeArgs({ account_id: receiverId, registration_only: true }),
-          GAS,
-          toYoctoBigInt(storageDepositAmount),
-        ),
-      );
+        const depositActions = depositsRequired.map((receiverId) =>
+          transactions.functionCall(
+            'storage_deposit',
+            encodeArgs({ account_id: receiverId, registration_only: true }),
+            GAS,
+            toYoctoBigInt(storageDepositAmount),
+          ),
+        );
 
-      const transferFunctionCalls = transferList.map((transfer) =>
-        transactions.functionCall(
-          'ft_transfer',
-          encodeArgs({
-            receiver_id: transfer.receiverId,
-            amount: transfer.amount,
-            memo: transfer.memo || '',
-          }),
-          GAS,
-          1n,
-        ),
-      );
+        const transferFunctionCalls = transferList.map((transfer) =>
+          transactions.functionCall(
+            'ft_transfer',
+            encodeArgs({
+              receiver_id: transfer.receiverId,
+              amount: transfer.amount,
+              memo: transfer.memo || '',
+            }),
+            GAS,
+            1n,
+          ),
+        );
 
-      nearJsActions = [...depositActions, ...transferFunctionCalls];
-    }
+        nearJsActions = [...depositActions, ...transferFunctionCalls];
+      }
 
-    requestLog.debug(
+      requestLog.debug(
       {
         depositCount: storageDepositActions.length,
         transferCount: transferActions.length,
@@ -684,57 +731,96 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       'Prepared NEAR actions',
     );
 
-    // 4) Execute batch transaction
-    let result: any;
+      let result: any;
 
-    if (account) {
-      if (nearJsActions.length === 0) {
-        requestLog.warn('No NEAR actions generated for sandbox transaction');
-        return res.status(400).send({ error: 'No actions generated for transaction' });
+      if (account) {
+        if (nearJsActions.length === 0) {
+          requestLog.warn('No NEAR actions generated for sandbox transaction');
+          return res.status(400).send({ error: 'No actions generated for transaction' });
+        }
+
+        await throttleGlobal();
+        await throttleKey(keyIdentifier);
+        requestLog.debug({ actionCount: nearJsActions.length }, 'Submitting batched sandbox transaction');
+        result = await account.signAndSendTransaction({
+          receiverId: config.ftContract,
+          actions: nearJsActions,
+        });
+      } else {
+        const WAIT_UNTIL =
+          (process.env.WAIT_UNTIL as
+            | 'None'
+            | 'Included'
+            | 'ExecutedOptimistic'
+            | 'IncludedFinal'
+            | 'Executed'
+            | 'Final') || 'Final';
+
+        const sendWithNonceRetry = async () => {
+          let attempt = 0;
+          let backoffMs = 150;
+          while (true) {
+            try {
+              await throttleGlobal();
+              await throttleKey(keyIdentifier);
+              const tx = await signer.signTransaction({
+                receiverAccountId: config.ftContract,
+                actions: apiTsActions,
+              });
+
+              return await client.sendSignedTransaction({
+                signedTransaction: tx,
+                waitUntil: WAIT_UNTIL,
+              });
+            } catch (err: any) {
+              if (isInvalidNonceError(err) && attempt < NONCE_RETRY_LIMIT) {
+                const nonceDetails = getInvalidNonceDetails(err);
+                attempt += 1;
+                requestLog.warn({
+                  attempt,
+                  nonceDetails,
+                  waitUntil: WAIT_UNTIL,
+                }, 'Retrying transaction due to nonce conflict');
+                await sleep(backoffMs);
+                backoffMs = Math.min(backoffMs * 2, 1000);
+                continue;
+              }
+              throw err;
+            }
+          }
+        };
+
+        result = await sendWithNonceRetry();
       }
 
-      requestLog.debug({ actionCount: nearJsActions.length }, 'Submitting batched sandbox transaction');
-      result = await account.signAndSendTransaction({
-        receiverId: config.ftContract,
-        actions: nearJsActions,
-      });
-    } else {
-      // Using @eclipseeer/near-api-ts (testnet/mainnet) - batch all actions in single transaction
-      const tx = await signer.signTransaction({
-        receiverAccountId: config.ftContract,
-        actions: apiTsActions,
-      });
-      const WAIT_UNTIL =
-        (process.env.WAIT_UNTIL as
-          | 'None'
-          | 'Included'
-          | 'ExecutedOptimistic'
-          | 'IncludedFinal'
-          | 'Executed'
-          | 'Final') || 'Final';
+      const failure = findFailureInOutcome(result);
+      if (failure) {
+        requestLog.error({ failure }, 'On-chain failure detected');
+        return res.status(500).send({
+          error: 'FT transfer failed on-chain',
+          details: failure,
+          result,
+        });
+      }
 
-      result = await client.sendSignedTransaction({
-        signedTransaction: tx,
-        waitUntil: WAIT_UNTIL,
+      const transferCount = transferList.length;
+      res.send({
+        message: `FT transfer${transferCount > 1 ? 's' : ''} initiated successfully`,
+        transfers: transferCount,
+        result
       });
+    } finally {
+      try {
+        sandboxLease?.release?.();
+      } catch (releaseError: any) {
+        requestLog.warn({ err: releaseError?.message || releaseError }, 'Failed to release sandbox account lease');
+      }
+      try {
+        signerLease?.release?.();
+      } catch (releaseError: any) {
+        requestLog.warn({ err: releaseError?.message || releaseError }, 'Failed to release signer key lease');
+      }
     }
-
-    const failure = findFailureInOutcome(result);
-    if (failure) {
-      requestLog.error({ failure }, 'On-chain failure detected');
-      return res.status(500).send({
-        error: 'FT transfer failed on-chain',
-        details: failure,
-        result,
-      });
-    }
-
-    const transferCount = transferList.length;
-    res.send({
-      message: `FT transfer${transferCount > 1 ? 's' : ''} initiated successfully`,
-      transfers: transferCount,
-      result
-    });
   } catch (error: any) {
     const txExecutionError = error?.cause?.data?.TxExecutionError;
     const errorMessage = extractErrorMessage(error);

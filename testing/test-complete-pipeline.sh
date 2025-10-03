@@ -26,6 +26,7 @@ API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-300}  # 5 minutes for proper benchmarking
 MAX_TPS=${MAX_TPS:-150}  # Target 100+ TPS
 SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
+SANDBOX_SMOKE_TEST=${SANDBOX_SMOKE_TEST:-0}
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
 CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-}}  # Optional override for cluster workers
 ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-artillery-local.yml}
@@ -35,6 +36,10 @@ if [ "$SANDBOX_BENCHMARK_10M" = "1" ]; then
     ARTILLERY_PROFILE="benchmark-sandbox-10m.yml"
     TEST_DURATION=${TEST_DURATION_OVERRIDE:-600}
     MAX_TPS=${MAX_TPS_OVERRIDE:-100}
+elif [ "$SANDBOX_SMOKE_TEST" = "1" ]; then
+    ARTILLERY_PROFILE="benchmark-sandbox-smoke.yml"
+    TEST_DURATION=${TEST_DURATION_OVERRIDE:-120}
+    MAX_TPS=${MAX_TPS_OVERRIDE:-40}
 fi
 
 # Function to check if port is in use
@@ -313,6 +318,54 @@ else
     log_info "This is a known limitation - proceeding with API service testing"
 fi
 
+# Top up FT supply so repeated runs do not hit balance exhaustion
+cat > mint-local.mjs << 'EOF'
+import { connect, keyStores, utils } from 'near-api-js';
+
+async function mintTokens() {
+    const contractAccountId = process.env.NEAR_CONTRACT_ACCOUNT_ID;
+    const signerAccountId = process.env.NEAR_SIGNER_ACCOUNT_ID;
+    const signerPrivateKey = process.env.NEAR_SIGNER_ACCOUNT_PRIVATE_KEY;
+    const nodeUrl = process.env.NEAR_NODE_URL;
+    const amount = process.env.FT_TOP_UP_AMOUNT || '2000000000000000000000000000'; // 2B tokens
+
+    const keyStore = new keyStores.InMemoryKeyStore();
+    const keyPair = utils.KeyPair.fromString(signerPrivateKey);
+    await keyStore.setKey('sandbox', signerAccountId, keyPair);
+
+    const near = await connect({
+        networkId: 'sandbox',
+        nodeUrl,
+        keyStore,
+    });
+
+    const account = await near.account(signerAccountId);
+    try {
+        await account.functionCall({
+            contractId: contractAccountId,
+            methodName: 'ft_mint',
+            args: {
+                account_id: signerAccountId,
+                amount,
+            },
+            gas: '300000000000000',
+        });
+        console.log(`✅ Minted ${amount} tokens to ${signerAccountId}`);
+    } catch (error) {
+        console.error('Failed to mint tokens', error);
+        process.exitCode = 1;
+    }
+}
+
+mintTokens();
+EOF
+
+if node mint-local.mjs; then
+    log_success "FT supply topped up"
+else
+    log_warning "Token minting step failed; continuing with existing balance"
+fi
+
 # Step 5: Start API Service
 log_info "🌐 Starting API service..."
 
@@ -320,6 +373,7 @@ log_info "🌐 Starting API service..."
 export NODE_URL=http://127.0.0.1:$SANDBOX_PORT
 export MASTER_ACCOUNT=$ACCOUNT_ID
 export MASTER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
+export MASTER_ACCOUNT_PRIVATE_KEYS=${MASTER_ACCOUNT_PRIVATE_KEYS:-$SECRET_KEY}
 export FT_CONTRACT=$ACCOUNT_ID
 
 # Start API service in background (cluster by default)

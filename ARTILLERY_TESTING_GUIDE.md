@@ -18,6 +18,9 @@ Focused notes on how we exercise the claiming service with Artillery. Keep it li
 nvm use 24
 ./testing/test-complete-pipeline.sh
 
+# 90-second smoke (fast feedback while iterating)
+SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh
+
 # Ten-minute benchmark (100 TPS × 600 s)
 SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh
 
@@ -49,6 +52,8 @@ Use the FastNEAR key in `.env.testnet`. If you add secondary RPC endpoints, list
 | Sustained | 120 s | 100 rps |
 | Peak | 60 s | 150 → 200 rps |
 | Hyperdrive (optional) | 90 s | 250 → 600 rps |
+
+For quick iterations, `benchmark-sandbox-smoke.yml` trims the run to ~90 seconds (15 s warm-up → 40 TPS sustain). Set `SANDBOX_SMOKE_TEST=1` when invoking `test-complete-pipeline.sh` or pass `ARTILLERY_CONFIG=testing/artillery/benchmark-sandbox-smoke.yml` to `run-artillery-test.sh` directly.
 
 The long-form benchmark under `benchmark-sandbox-10m.yml` extends the sustained phase to 600 seconds at a flat 100 rps after a 10-second warm-up, matching the “100 TPS for 10 minutes” requirement. Expect the full run (pipeline + teardown) to last just over 12 minutes.
 
@@ -96,6 +101,7 @@ Notes:
 ## 7. Tips for higher TPS
 
 - Keep the worker count and key pool aligned (N workers ⇒ N keys).
+- In sandbox runs, tune `SANDBOX_MAX_IN_FLIGHT_PER_KEY` (default 4) so each access key signs only a handful of concurrent transactions; increase slowly while watching for `InvalidNonce` spikes.
 - Pre-fund receiver accounts and disable the storage check only when you are certain every receiver is registered.
 - Use staggered phases (e.g., multiple shorter sustained segments) to observe when bottlenecks appear.
 - Capture before/after metrics in `test-results/` so trends are easy to compare.

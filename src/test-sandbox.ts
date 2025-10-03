@@ -84,19 +84,28 @@ async function testAPIService() {
   console.log('\n🚀 Starting API service...');
   const { spawn } = await import('child_process');
 
+  const apiEnv = {
+    ...process.env,
+    NEAR_ENV: 'sandbox',
+    NODE_URL: sandboxRpcUrl,
+    RPC_URLS: sandboxRpcUrl,
+    MASTER_ACCOUNT: masterAccount.accountId,
+    MASTER_ACCOUNT_PRIVATE_KEY: masterPrivateKey,
+    MASTER_ACCOUNT_PRIVATE_KEYS: masterPrivateKey,
+    FT_CONTRACT: ftContractAccount.accountId,
+    SKIP_STORAGE_CHECK: 'false',
+    WAIT_UNTIL: 'Final',
+  };
+
+  console.log('   MASTER_ACCOUNT:', apiEnv.MASTER_ACCOUNT);
+  const keyPreview = (value?: string) =>
+    value ? `${value.slice(0, 10)}...${value.slice(-6)}` : 'undefined';
+  console.log('   MASTER_ACCOUNT_PRIVATE_KEY length:', apiEnv.MASTER_ACCOUNT_PRIVATE_KEY?.length);
+  console.log('   MASTER_ACCOUNT_PRIVATE_KEYS preview:', keyPreview(apiEnv.MASTER_ACCOUNT_PRIVATE_KEYS));
+
   const apiProcess = spawn('npm', ['run', 'start:sandbox'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      NEAR_ENV: 'sandbox',
-      NODE_URL: sandboxRpcUrl,
-      RPC_URLS: sandboxRpcUrl,
-      MASTER_ACCOUNT: masterAccount.accountId,
-  MASTER_ACCOUNT_PRIVATE_KEY: masterPrivateKey,
-      FT_CONTRACT: ftContractAccount.accountId,
-      SKIP_STORAGE_CHECK: 'false',
-      WAIT_UNTIL: 'Final'
-    }
+    env: apiEnv,
   });
 
   // Wait for API service to start (increased timeout)
@@ -149,12 +158,14 @@ async function testAPIService() {
       const response = await fetch('http://localhost:3000/send-ft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ receiverId, amount, memo: `Test: ${description}` })
+        body: JSON.stringify({ receiverId, amount, memo: `Test: ${description}` }),
       });
 
       const result = await response.json();
-      console.log(`   ${description}: ${response.status === 200 ? '✅' : '❌'} ${response.status}`);
-      return response.status === 200;
+      const statusOk = response.status === 200;
+      console.log(`   ${description}: ${statusOk ? '✅' : '❌'} ${response.status}`);
+      console.log('      Response:', JSON.stringify(result));
+      return statusOk;
     } catch (error) {
       console.log(`   ${description}: ❌ Error - ${error}`);
       return false;

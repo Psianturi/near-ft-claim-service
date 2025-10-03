@@ -1,5 +1,9 @@
 config:
   target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 42
+    pool: 100
+    maxSockets: 205
   phases:
     # Warm-up phase
     - duration: 20
@@ -7,20 +11,20 @@ config:
       name: "Warm-up"
     
     # Ramp-up phase
-    - duration: 50
-      arrivalRate: 10
-      rampTo: 100
+    - duration: 40
+      arrivalRate: 20
+      rampTo: 75
       name: "Ramp-up"
     
     # Peak load phase
-    - duration: 80
-      arrivalRate: 100
+    - duration: 45
+      arrivalRate: 75
       name: "Peak Load"
     
     # High-load stress test
-    - duration: 60
-      arrivalRate: 150
-      rampTo: 200
+    - duration: 250
+      arrivalRate: 100
+      rampTo: 150
       name: "Stress Test"
   
   variables:

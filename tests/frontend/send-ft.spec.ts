@@ -42,9 +42,15 @@ test.describe('Send FT demo UI', () => {
 
     await expect(submitButton).toBeDisabled();
 
-    const responsePanel = page.locator('#response');
-    await expect(responsePanel).toContainText('mock-transaction-hash');
-    await expect(responsePanel).not.toHaveAttribute('data-state', 'error');
+  const responsePanel = page.locator('#response');
+  await expect(responsePanel).toContainText('Transfer request accepted');
+  await expect(responsePanel).toContainText('Receiver: receiver.testnet');
+  await expect(responsePanel).not.toHaveAttribute('data-state', 'error');
+
+  const rawDetails = page.locator('#raw-response');
+  await expect(rawDetails).toBeVisible();
+  await rawDetails.locator('summary').click();
+  await expect(page.locator('#raw-response-body')).toContainText('mock-transaction-hash');
 
     await expect(submitButton).toBeEnabled();
 
@@ -70,8 +76,13 @@ test.describe('Send FT demo UI', () => {
     const healthButton = page.locator('#health-btn');
     await healthButton.click();
 
-    const responsePanel = page.locator('#response');
-    await expect(responsePanel).toContainText('"status": "ok"');
+  const responsePanel = page.locator('#response');
+  await expect(responsePanel).toContainText('Health: ok');
+
+  const rawDetails = page.locator('#raw-response');
+  await expect(rawDetails).toBeVisible();
+  await rawDetails.locator('summary').click();
+  await expect(page.locator('#raw-response-body')).toContainText('"status": "ok"');
 
     const latestLogEntry = page.locator('#log li').first();
     await expect(latestLogEntry).toContainText('GET /health → 200');

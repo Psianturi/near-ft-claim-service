@@ -1,26 +1,26 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 30          # seconds
-    pool: 100            # enable keep-alive / reuse sockets
-    maxSockets: 256
+    timeout: 30
+    pool: 60
+    maxSockets: 120
   phases:
-    # Extended warm-up so sandbox RPC can stabilise
-    - duration: 60
+    # Quick warm-up to prime connections and receiver caches
+    - duration: 15
       arrivalRate: 5
-      rampTo: 30
-      name: "Extended Warm-up"
+      rampTo: 15
+      name: "Warm-up"
 
-    # Gradual ramp towards the configured target TPS
-    - duration: 120
-      arrivalRate: 30
+    # Moderate ramp to expose issues around 40 TPS without overwhelming the pool
+    - duration: 30
+      arrivalRate: 15
       rampTo: 40
-      name: "Ramp to Target"
+      name: "Ramp"
 
-    # Sustained load at TARGET for validation
-    - duration: 120
+    # Short sustain window to validate stability at target throughput (~40 TPS)
+    - duration: 45
       arrivalRate: 40
-      name: "Sustained Load"
+      name: "Sustain"
 
   variables:
     receiverId:
@@ -31,13 +31,13 @@ config:
       - "bob.test.near"
 
     amount:
-      - "1000000000000000000000000"    # 1 token
-      - "5000000000000000000000000"    # 5 tokens
-      - "10000000000000000000000000"   # 10 tokens
+      - "1000000000000000000000000"   # 1 token
+      - "5000000000000000000000000"   # 5 tokens
+      - "10000000000000000000000000"  # 10 tokens
 
 scenarios:
   - name: "Batched FT Transfers"
-    weight: 70
+    weight: 60
     flow:
       - post:
           url: "/send-ft"
@@ -47,15 +47,15 @@ scenarios:
             transfers:
               - receiverId: "{{ receiverId }}"
                 amount: "{{ amount }}"
-                memo: "Batch load test A"
+                memo: "Smoke batch A"
               - receiverId: "{{ receiverId }}"
                 amount: "{{ amount }}"
-                memo: "Batch load test B"
+                memo: "Smoke batch B"
           expect:
-            - statusCode: [200, 400, 500]
+            - statusCode: 200
 
   - name: "Single FT Transfer"
-    weight: 20
+    weight: 30
     flow:
       - post:
           url: "/send-ft"
@@ -64,9 +64,9 @@ scenarios:
           json:
             receiverId: "{{ receiverId }}"
             amount: "{{ amount }}"
-            memo: "Load test {{ $timestamp }}"
+            memo: "Artillery smoke - {{ $timestamp }}"
           expect:
-            - statusCode: [200, 400, 500]
+            - statusCode: 200
 
   - name: "Health Check"
     weight: 10
@@ -75,4 +75,3 @@ scenarios:
           url: "/health"
           expect:
             - statusCode: 200
-

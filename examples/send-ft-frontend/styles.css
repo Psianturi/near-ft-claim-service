@@ -83,6 +83,36 @@ input:focus {
   flex-wrap: wrap;
 }
 
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.presets-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.preset-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
 button {
   border-radius: 12px;
   border: none;
@@ -93,6 +123,22 @@ button {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button.preset-btn {
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #e2e8f0;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+button.preset-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(129, 140, 248, 0.4);
+  transform: translateY(-1px);
 }
 
 button.secondary {
@@ -126,6 +172,36 @@ pre {
 pre[data-state='error'] {
   border: 1px solid rgba(248, 113, 113, 0.5);
   background: rgba(153, 27, 27, 0.35);
+}
+
+#raw-response {
+  margin-top: 1rem;
+  color: #cbd5f5;
+}
+
+#raw-response > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+#raw-response[open] > summary {
+  background: rgba(129, 140, 248, 0.15);
+  border-color: rgba(129, 140, 248, 0.4);
+}
+
+#raw-response-body {
+  margin-top: 0.75rem;
+  max-height: 240px;
+  overflow: auto;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 10px;
+  padding: 1rem;
+  font-size: 0.9rem;
 }
 
 #log {
@@ -167,6 +243,10 @@ pre[data-state='error'] {
   }
 
   .actions {
+    flex-direction: column;
+  }
+
+  .preset-buttons {
     flex-direction: column;
   }
 }
