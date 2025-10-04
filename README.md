@@ -1,7 +1,7 @@
 # NEAR Fungible Token Claiming Service
 
 [![CI](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml)
-[![Sandbox Integration (CI)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/sandbox-integration.yml)
+[![Sandbox Benchmark](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml)
 
 A TypeScript/Express service that queues and signs NEP-141 transfers for NEAR accounts. It supports the NEAR sandbox and public testnet, includes a worker pool for concurrency, and ships with tooling for benchmarking and a minimal frontend demo.
 
@@ -159,6 +159,13 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 | `./testing/artillery/run-artillery-test.sh testnet` | Single-run load verification on public testnet. |
 
 Before running Artillery, ensure Node 22+ is active and your key pool matches the worker count referenced in the environment file. For rationale, see `docs/testing.md`; CI wiring is described in `docs/ci.md`.
+
+### CI-powered sandbox benchmark
+
+- The **Sandbox Benchmark** workflow (`.github/workflows/benchmark.yml`) now runs automatically on every push to `main`, on a weekly schedule (Tuesday 01:00 WIB), and on-demand via the *Run workflow* button.
+- Each run executes `testing/test-complete-pipeline.sh` with CI-tuned knobs (`TEST_DURATION=240`, `MAX_TPS=180`, `CLUSTER_WORKERS=4`, `SANDBOX_MAX_IN_FLIGHT_PER_KEY=2`) and uploads sandbox/API logs plus raw Artillery JSON under the `sandbox-benchmark-artifacts` bundle.
+- A helper script `scripts/report-benchmark.mjs` parses the latest Artillery output and appends a Markdown summary (RPS, latency, success rate) directly to the GitHub Actions job summary so results are easy to inspect.
+- Trigger locally if you want the same summary: `node scripts/report-benchmark.mjs`.
 
 ### Sandbox load-test snapshot (2025-10-04)
 

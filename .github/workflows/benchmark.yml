@@ -2,6 +2,9 @@ name: Sandbox Benchmark
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '0 18 * * 1' # Every Tuesday at 01:00 WIB (Monday 18:00 UTC)
 
