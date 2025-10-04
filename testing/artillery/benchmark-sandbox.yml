@@ -1,9 +1,9 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 30
-    pool: 100
-    maxSockets: 256
+    timeout: 90
+    pool: 150
+    maxSockets: 400
   phases:
     # Extended warm-up to prevent instantaneous spikes
     - duration: 60

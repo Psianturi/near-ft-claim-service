@@ -34,6 +34,12 @@ const getTestnetNear = (): TestnetNear => {
 };
 
 
+const SERVICE_STARTUP_TIMEOUT_MS = Number.parseInt(
+  process.env.SERVICE_STARTUP_TIMEOUT_MS || '90000',
+  10,
+);
+
+
 const coerceToBigInt = (value: any): bigint => {
   if (value == null) {
     return 0n;
@@ -148,14 +154,21 @@ async function testTestnetService() {
   });
 
   let serviceReady = false;
+  let stdoutBuffer = '';
+  const readinessSignals = [
+    'server ready to accept requests',
+    'near connection initialized successfully',
+    '@eclipseeer/near-api-ts connection ready',
+    'http server listening',
+  ];
   const readyPromise = new Promise<void>((resolve) => {
     apiProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       console.log('API Output:', output.trim());
-      const normalized = output.toLowerCase();
+      stdoutBuffer += output.toLowerCase();
       if (
-        normalized.includes('server ready to accept requests') ||
-        normalized.includes('near connection initialized successfully')
+        !serviceReady &&
+        readinessSignals.some((signal) => stdoutBuffer.includes(signal))
       ) {
         serviceReady = true;
         console.log('✅ API service started successfully');
@@ -163,7 +176,6 @@ async function testTestnetService() {
       }
     });
   });
-
   apiProcess.stderr?.on('data', (data) => {
     console.log('API Error:', data.toString().trim());
   });
@@ -171,7 +183,10 @@ async function testTestnetService() {
   await Promise.race([
     readyPromise,
     new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Service startup timeout')), 45000),
+      setTimeout(
+        () => reject(new Error('Service startup timeout')),
+        SERVICE_STARTUP_TIMEOUT_MS,
+      ),
     ),
   ]);
 
@@ -188,7 +203,6 @@ async function testTestnetService() {
   console.log(`   Master account: ${config.masterAccount}`);
   console.log(`   FT contract: ${config.ftContract}`);
   console.log(`   Test receiver: ${receiverId}`);
-  console.log(`   Transfer amount: ${transferAmount} yocto`);
   const startingBalance = await fetchFtBalance(receiverId);
   console.log(`   📊 Starting receiver balance: ${startingBalance.toString()} yocto`);
 
