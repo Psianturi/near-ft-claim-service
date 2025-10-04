@@ -397,15 +397,31 @@ const findFailureInOutcome = (outcome: any): any | null => {
 
 // Retry helper with exponential backoff for view RPC calls
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const withRetry = async <T>(fn: () => Promise<T>, attempts = 3) => {
+const withRetry = async <T>(fn: () => Promise<T>, attempts = 5) => {
   let delay = 200;
   for (let i = 0; i < attempts; i++) {
     try {
       return await fn();
     } catch (e: any) {
-      const code = e?.cause?.code ?? e?.code;
+      const code = e?.cause?.code ?? e?.code ?? e?.cause?.errno;
+      const message = e?.message ? String(e.message).toLowerCase() : '';
+      const retriableCodes = new Set([
+        -429,
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'EAI_AGAIN',
+        'EPIPE',
+      ]);
       const retriable =
-        code === -429 || code === 'ETIMEDOUT' || code === 'ECONNRESET';
+        retriableCodes.has(code as any) ||
+        message.includes('fetch failed') ||
+        message.includes('socket hang up');
+
+      if (retriable) {
+        requestLog.warn({ attempt: i + 1, code, message }, 'Retrying RPC view call after transient error');
+      }
+
       if (!retriable || i === attempts - 1) throw e;
       await sleep(delay);
       delay *= 2;
@@ -427,6 +443,7 @@ app.get('/health', (req: Request, res: Response) => {
 
 app.post('/send-ft', async (req: Request, res: Response) => {
   requestCount++; // Track TPS
+  const isSandboxEnv = (process.env.NEAR_ENV || config.networkId) === 'sandbox';
   await concurrencyManager.acquire();
   try {
     const { receiverId, amount, memo, transfers } = req.body;
@@ -491,7 +508,7 @@ app.post('/send-ft', async (req: Request, res: Response) => {
 
     // NEAR connection is initialized at server startup
     const nearInterface = getNear();
-    const isSandbox = (process.env.NEAR_ENV || config.networkId) === 'sandbox';
+    const isSandbox = isSandboxEnv;
 
     let signer: any = null;
     let client: any = null;
@@ -625,57 +642,57 @@ app.post('/send-ft', async (req: Request, res: Response) => {
         }
       }
 
-    // 3) Build storage deposit + transfer actions
-    const depositsRequired = !skipStorageCheck
-      ? uniqueReceivers.filter((receiverId) => !storageChecks[receiverId])
-      : [];
+      // 3) Build storage deposit + transfer actions
+      const depositsRequired = !skipStorageCheck
+        ? uniqueReceivers.filter((receiverId) => !storageChecks[receiverId])
+        : [];
 
       const storageDepositAmount = (() => {
-      if (bounds && typeof bounds === 'object') {
-        if (typeof bounds.min === 'string') return bounds.min;
-        if (typeof bounds.min === 'number') return String(bounds.min);
-        if (typeof bounds.min === 'bigint') return bounds.min.toString();
-      }
-      if (process.env.STORAGE_MIN_DEPOSIT) {
-        return process.env.STORAGE_MIN_DEPOSIT;
-      }
-      return '1250000000000000000000';
-    })();
+        if (bounds && typeof bounds === 'object') {
+          if (typeof bounds.min === 'string') return bounds.min;
+          if (typeof bounds.min === 'number') return String(bounds.min);
+          if (typeof bounds.min === 'bigint') return bounds.min.toString();
+        }
+        if (process.env.STORAGE_MIN_DEPOSIT) {
+          return process.env.STORAGE_MIN_DEPOSIT;
+        }
+        return '1250000000000000000000';
+      })();
 
       requestLog.debug(
-      {
-        skipStorageCheck,
-        storageChecks,
-        depositsRequired,
-        storageDepositAmount,
-      },
-      'Storage registration summary',
-    );
+        {
+          skipStorageCheck,
+          storageChecks,
+          depositsRequired,
+          storageDepositAmount,
+        },
+        'Storage registration summary',
+      );
 
       const transferActions: any[] = transferList.map((transfer) =>
-      functionCall({
-        fnName: 'ft_transfer',
-        fnArgsJson: {
-          receiver_id: transfer.receiverId,
-          amount: transfer.amount,
-          memo: transfer.memo || '',
-        },
-        gasLimit: teraGas('30'),
-        attachedDeposit: { yoctoNear: '1' },
-      }),
-    );
+        functionCall({
+          fnName: 'ft_transfer',
+          fnArgsJson: {
+            receiver_id: transfer.receiverId,
+            amount: transfer.amount,
+            memo: transfer.memo || '',
+          },
+          gasLimit: teraGas('30'),
+          attachedDeposit: { yoctoNear: '1' },
+        }),
+      );
 
       const storageDepositActions: any[] = depositsRequired.map((receiverId) =>
-      functionCall({
-        fnName: 'storage_deposit',
-        fnArgsJson: {
-          account_id: receiverId,
-          registration_only: true,
-        },
-        gasLimit: teraGas('30'),
-        attachedDeposit: { yoctoNear: storageDepositAmount },
-      }),
-    );
+        functionCall({
+          fnName: 'storage_deposit',
+          fnArgsJson: {
+            account_id: receiverId,
+            registration_only: true,
+          },
+          gasLimit: teraGas('30'),
+          attachedDeposit: { yoctoNear: storageDepositAmount },
+        }),
+      );
 
       const apiTsActions: any[] = [...storageDepositActions, ...transferActions];
 
@@ -722,14 +739,14 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       }
 
       requestLog.debug(
-      {
-        depositCount: storageDepositActions.length,
-        transferCount: transferActions.length,
-        actionCount: apiTsActions.length,
-        nearJsActionCount: nearJsActions.length,
-      },
-      'Prepared NEAR actions',
-    );
+        {
+          depositCount: storageDepositActions.length,
+          transferCount: transferActions.length,
+          actionCount: apiTsActions.length,
+          nearJsActionCount: nearJsActions.length,
+        },
+        'Prepared NEAR actions',
+      );
 
       let result: any;
 
@@ -825,6 +842,15 @@ app.post('/send-ft', async (req: Request, res: Response) => {
     const txExecutionError = error?.cause?.data?.TxExecutionError;
     const errorMessage = extractErrorMessage(error);
 
+    // Temporary verbose logging to trace network issues during sandbox tests
+    console.error('FT transfer failure diagnostics', {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack,
+      cause: error?.cause,
+      errorMessage,
+    });
+
     requestLog.error({
       err: error,
       cause: error?.cause,
@@ -832,9 +858,31 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       errorMessage,
     }, 'Failed to initiate FT transfer');
 
+    const cause = (error && typeof error === 'object') ? (error as any).cause : undefined;
+    const debugInfo = isSandboxEnv
+      ? {
+          code: cause?.code ?? error?.code ?? null,
+          errno: cause?.errno ?? null,
+          message: cause?.message ?? null,
+          type: cause?.name ?? error?.name ?? null,
+        }
+      : undefined;
+
+    if (isSandboxEnv) {
+      console.log('Sandbox debug info', {
+        debugInfo,
+        hasCause: Boolean(cause),
+        causeKeys: cause ? Object.keys(cause) : [],
+      });
+    }
+
     res
       .status(500)
-      .send({ error: 'Failed to initiate FT transfer', details: errorMessage });
+      .send({
+        error: 'Failed to initiate FT transfer',
+        details: errorMessage,
+        ...(debugInfo ? { debug: debugInfo } : {}),
+      });
   } finally {
     concurrencyManager.release();
   }

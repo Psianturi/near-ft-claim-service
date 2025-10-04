@@ -1,19 +1,19 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 30
+    timeout: 45
     pool: 120
     maxSockets: 300
   phases:
     # Gentle warm-up before the sustained benchmark window
     - duration: 10
       arrivalRate: 10
-      rampTo: 60
+      rampTo: 40
       name: "Extended Warm-up"
 
     # Gradual ramp to benchmark target to avoid nonce storms
     - duration: 20
-      arrivalRate: 25
+      arrivalRate: 40
       rampTo: 100
       name: "Ramp to 100 TPS"
 

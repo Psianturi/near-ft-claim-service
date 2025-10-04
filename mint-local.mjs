@@ -27,6 +27,7 @@ async function mintTokens() {
                 amount,
             },
             gas: '300000000000000',
+            attachedDeposit: '1',
         });
         console.log(`✅ Minted ${amount} tokens to ${signerAccountId}`);
     } catch (error) {

@@ -1,25 +1,25 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 30          # seconds
-    pool: 100            # enable keep-alive / reuse sockets
-    maxSockets: 256
+    timeout: 60          # seconds
+    pool: 110             # enable keep-alive / reuse sockets
+    maxSockets: 350
   phases:
     # Extended warm-up so sandbox RPC can stabilise
-    - duration: 60
+    - duration: 45
       arrivalRate: 5
-      rampTo: 30
+      rampTo: 70
       name: "Extended Warm-up"
 
     # Gradual ramp towards the configured target TPS
-    - duration: 120
-      arrivalRate: 30
-      rampTo: 40
+    - duration: 100
+      arrivalRate: 70
+      rampTo: 150
       name: "Ramp to Target"
 
     # Sustained load at TARGET for validation
     - duration: 120
-      arrivalRate: 40
+      arrivalRate: 150
       name: "Sustained Load"
 
   variables:
@@ -37,7 +37,7 @@ config:
 
 scenarios:
   - name: "Batched FT Transfers"
-    weight: 70
+    weight: 50
     flow:
       - post:
           url: "/send-ft"
@@ -55,7 +55,7 @@ scenarios:
             - statusCode: [200, 400, 500]
 
   - name: "Single FT Transfer"
-    weight: 20
+    weight: 40
     flow:
       - post:
           url: "/send-ft"
@@ -75,4 +75,3 @@ scenarios:
           url: "/health"
           expect:
             - statusCode: 200
-

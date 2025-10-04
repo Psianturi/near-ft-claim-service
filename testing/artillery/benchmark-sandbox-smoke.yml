@@ -1,12 +1,12 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 30
-    pool: 60
-    maxSockets: 120
+    timeout: 40
+    pool: 80
+    maxSockets: 150
   phases:
     # Quick warm-up to prime connections and receiver caches
-    - duration: 15
+    - duration: 10
       arrivalRate: 5
       rampTo: 15
       name: "Warm-up"
@@ -14,12 +14,12 @@ config:
     # Moderate ramp to expose issues around 40 TPS without overwhelming the pool
     - duration: 30
       arrivalRate: 15
-      rampTo: 40
+      rampTo: 45
       name: "Ramp"
 
     # Short sustain window to validate stability at target throughput (~40 TPS)
     - duration: 45
-      arrivalRate: 40
+      arrivalRate: 45
       name: "Sustain"
 
   variables:

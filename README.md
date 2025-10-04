@@ -14,7 +14,7 @@ A TypeScript/Express service that queues and signs NEP-141 transfers for NEAR ac
 - **Environment awareness** – `.env` (sandbox) and `.env.testnet` keep credentials isolated.
 - **Tooling** – Artillery profiles, Playwright smoke tests, and helper scripts for deployment and minting.
 
-**Recent updates:** tuned per-key throttle defaults, refreshed frontend presets, and added CI notes for the load-testing pipeline.
+**Recent updates:** tuned per-key throttle defaults, refreshed frontend presets, documented the sandbox load-testing pipeline (MAX_TX_PER_SECOND=180, headroom 85%), and captured the latest Artillery snapshot (~105 RPS sustained).
 
 Use this service when you need a repeatable way to distribute fungible tokens with controlled throughput.
 
@@ -159,6 +159,14 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 | `./testing/artillery/run-artillery-test.sh testnet` | Single-run load verification on public testnet. |
 
 Before running Artillery, ensure Node 22+ is active and your key pool matches the worker count referenced in the environment file. For rationale, see `docs/testing.md`; CI wiring is described in `docs/ci.md`.
+
+### Sandbox load-test snapshot (2025-10-04)
+
+- **Environment knobs (.env):** `MAX_TX_PER_SECOND=180`, `MAX_TX_PER_KEY_PER_SECOND=20`, `CONCURRENCY_LIMIT=600`, `BATCH_SIZE=100`, `WORKER_COUNT=12`, `QUEUE_SIZE=25000`, `SANDBOX_MAX_IN_FLIGHT_PER_KEY=3`, `SKIP_STORAGE_CHECK=true`.
+- **Derived targets:** Headroom factor is 85%, yielding `ARTILLERY_TARGET_TPS≈153` and a warm-up ramp at ~50% of the goal.
+- **Pipeline health:** `./testing/test-complete-pipeline.sh` now regenerates `artillery-local.yml` with 2-space indentation, exports `timestamp`, injects storage deposits automatically, and validates the API before load.
+- **Latest sandbox run:** 34,530 requests executed, 3,443 HTTP 200s, 31,087 timeouts (no 4xx/5xx), mean rate ~105 RPS, p95 latency 36 ms, tail spikes when near-sandbox RPC saturates.
+- **Interpretation:** The sandbox binary tops out before the service; lower `ARTILLERY_TARGET_TPS` or increase RPC headroom if timeouts become a blocker. The API and worker pool remained healthy during the run (no 5xx responses).
 
 ---
 

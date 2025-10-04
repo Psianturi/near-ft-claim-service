@@ -24,7 +24,29 @@ log_error() { echo -e "${RED}❌ $1${NC}"; }
 SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-300}  # 5 minutes for proper benchmarking
-MAX_TPS=${MAX_TPS:-150}  # Target 100+ TPS
+
+# Derive sensible defaults for MAX_TPS and headroom from the sandbox .env file
+DEFAULT_MAX_TPS=150
+DEFAULT_HEADROOM_PERCENT=85
+SANDBOX_ENV_FILE="$PROJECT_ROOT/.env"
+
+if [ -f "$SANDBOX_ENV_FILE" ]; then
+    ENV_MAX_TPS=$(grep -E '^MAX_TX_PER_SECOND=' "$SANDBOX_ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//' | sed 's/[[:space:]]*#.*$//' | tr -d '"' | tr -d '\r' | xargs || true)
+    if [[ "$ENV_MAX_TPS" =~ ^[0-9]+$ ]] && [ "$ENV_MAX_TPS" -gt 0 ]; then
+        DEFAULT_MAX_TPS=$ENV_MAX_TPS
+    fi
+
+    ENV_HEADROOM=$(grep -E '^ARTILLERY_HEADROOM_PERCENT=' "$SANDBOX_ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//' | sed 's/[[:space:]]*#.*$//' | tr -d '"' | tr -d '\r' | xargs || true)
+    if [[ "$ENV_HEADROOM" =~ ^[0-9]+$ ]] && [ "$ENV_HEADROOM" -ge 10 ] && [ "$ENV_HEADROOM" -le 100 ]; then
+        DEFAULT_HEADROOM_PERCENT=$ENV_HEADROOM
+    fi
+fi
+
+MAX_TPS=${MAX_TPS:-$DEFAULT_MAX_TPS}
+if [ "$MAX_TPS" -lt 1 ]; then
+    MAX_TPS=1
+fi
+
 SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
 SANDBOX_SMOKE_TEST=${SANDBOX_SMOKE_TEST:-0}
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
@@ -41,6 +63,28 @@ elif [ "$SANDBOX_SMOKE_TEST" = "1" ]; then
     TEST_DURATION=${TEST_DURATION_OVERRIDE:-120}
     MAX_TPS=${MAX_TPS_OVERRIDE:-40}
 fi
+
+HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-$DEFAULT_HEADROOM_PERCENT}
+if [ "$HEADROOM_PERCENT" -lt 10 ] || [ "$HEADROOM_PERCENT" -gt 100 ]; then
+    HEADROOM_PERCENT=$DEFAULT_HEADROOM_PERCENT
+fi
+
+ARTILLERY_TARGET_TPS=$(( MAX_TPS * HEADROOM_PERCENT / 100 ))
+if [ "$ARTILLERY_TARGET_TPS" -lt 1 ]; then
+    ARTILLERY_TARGET_TPS=$MAX_TPS
+fi
+
+if [ "$ARTILLERY_TARGET_TPS" -gt "$MAX_TPS" ]; then
+    ARTILLERY_TARGET_TPS=$MAX_TPS
+fi
+
+WARMUP_RAMP_TARGET=$(( ARTILLERY_TARGET_TPS / 2 ))
+if [ "$WARMUP_RAMP_TARGET" -lt 10 ]; then
+    WARMUP_RAMP_TARGET=10
+fi
+
+RAMP_START_RATE=$(( WARMUP_RAMP_TARGET > 10 ? WARMUP_RAMP_TARGET : 10 ))
+SUSTAINED_RATE=$ARTILLERY_TARGET_TPS
 
 # Function to check if port is in use
 check_port() {
@@ -99,6 +143,8 @@ log_info "   - Sandbox Port: $SANDBOX_PORT"
 log_info "   - API Port: $API_PORT" 
 log_info "   - Test Duration: ${TEST_DURATION}s"
 log_info "   - Max TPS Target: $MAX_TPS"
+log_info "   - Headroom: ${HEADROOM_PERCENT}%"
+log_info "   - Artillery sustained target: ${SUSTAINED_RATE} rps"
 log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
 log_info "   - Cluster mode: ${SANDBOX_USE_CLUSTER} (workers=${CLUSTER_WORKERS:-auto})"
 
@@ -349,6 +395,7 @@ async function mintTokens() {
                 amount,
             },
             gas: '300000000000000',
+            attachedDeposit: '1',
         });
         console.log(`✅ Minted ${amount} tokens to ${signerAccountId}`);
     } catch (error) {
@@ -410,18 +457,18 @@ config:
     # Extended warm-up so sandbox RPC can stabilise
     - duration: 60
       arrivalRate: 5
-      rampTo: 30
+      rampTo: $WARMUP_RAMP_TARGET
       name: "Extended Warm-up"
 
     # Gradual ramp towards the configured target TPS
     - duration: 120
-      arrivalRate: 30
-      rampTo: $MAX_TPS
+      arrivalRate: $RAMP_START_RATE
+      rampTo: $ARTILLERY_TARGET_TPS
       name: "Ramp to Target"
 
     # Sustained load at TARGET for validation
     - duration: 120
-      arrivalRate: $MAX_TPS
+      arrivalRate: $SUSTAINED_RATE
       name: "Sustained Load"
 
   variables:
@@ -439,7 +486,7 @@ config:
 
 scenarios:
   - name: "Batched FT Transfers"
-    weight: 70
+    weight: 50
     flow:
       - post:
           url: "/send-ft"
@@ -457,7 +504,7 @@ scenarios:
             - statusCode: [200, 400, 500]
 
   - name: "Single FT Transfer"
-    weight: 20
+    weight: 40
     flow:
       - post:
           url: "/send-ft"
@@ -477,7 +524,6 @@ scenarios:
           url: "/health"
           expect:
             - statusCode: 200
-
 EOF
 
 # Step 7: Run Simple API Validation Test
@@ -556,6 +602,9 @@ echo "   ✅ Concurrent handling: WORKING"
 echo ""
 
 # Step 8: Execute Artillery load test with custom profile
+timestamp=$(date +%Y%m%d-%H%M%S)
+export timestamp
+
 log_info "🚀 Launching Artillery load test (sandbox profile)..."
 log_info "   ↳ Active profile: ${ARTILLERY_PROFILE}"
 
