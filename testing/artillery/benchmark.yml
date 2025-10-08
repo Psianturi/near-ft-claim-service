@@ -47,3 +47,7 @@ scenarios:
              receiverId: '{{ receiverId }}'  # Use environment variable or default
              amount: '1000000'  # Small amount for testing
              memo: 'Artillery Load Test'
+            expect:
+              - statusCode: 200
+              - json:
+                  success: true

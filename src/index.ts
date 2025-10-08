@@ -7,12 +7,13 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import https from 'https';
 import http from 'http';
-import { initNear, getNear, cleanupNear } from './near.js';
+import { initNear, cleanupNear } from './near.js';
+import { startReconciler } from './reconciler.js';
 import { config } from './config.js';
-import { functionCall, teraGas } from '@eclipseeer/near-api-ts';
-import { safeView } from './near-utils.js';
 import { createLogger } from './logger.js';
-import { throttleGlobal, throttleKey, getThrottleConfig } from './key-throttle.js';
+import { getThrottleConfig } from './key-throttle.js';
+import persistence from './persistence-jsonl.js';
+import { submitTransfers, requeueOutstandingJobs } from './transfer-coordinator.js';
 
 const log = createLogger({ module: 'server' });
 const metricsLog = log.child({ component: 'metrics' });
@@ -60,6 +61,15 @@ const server = app.listen(port, host, () => {
   log.info({ port, host }, 'HTTP server listening');
 });
 
+// Start background reconciler after NEAR initialization
+initNear().then(() => {
+  startReconciler().catch((err) => {
+    log.error({ err }, 'Failed to start reconciler');
+  });
+}).catch((err) => {
+  log.error({ err }, 'Failed to initialize NEAR client for reconciler');
+});
+
 // Configure server for maximum performance (600+ TPS) - inspired by Rust implementation
 server.setTimeout(SERVER_TIMEOUT_MS);
 server.maxConnections = 50000; 
@@ -99,19 +109,15 @@ if (typeof global !== 'undefined' && global.gc) {
 // Ultra-high performance configuration inspired by Rust implementation
 const CONCURRENCY_LIMIT = parseInt(process.env.CONCURRENCY_LIMIT || '2000', 10); // Maximum concurrency like Rust
 const QUEUE_SIZE = parseInt(process.env.QUEUE_SIZE || '50000', 10); // Massive queue
-const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '50', 10); // Large batches
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || '4', 10); // Testing with 4 workers for sandbox
-const MAX_IN_FLIGHT = parseInt(process.env.MAX_IN_FLIGHT || '200', 10); // Like Rust MAX_IN_FLIGHT
 const NONCE_RETRY_LIMIT = parseInt(process.env.NONCE_RETRY_LIMIT || '3', 10);
 
 class ConcurrencyManager {
   constructor(private readonly log = createLogger({ module: 'server', component: 'concurrency' })) {}
 
   private active = 0;
-  private queue: Array<{ resolve: () => void; reject: (error: Error) => void; timeout: NodeJS.Timeout; task?: any }> = [];
+  private queue: Array<{ resolve: () => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = [];
   private stats = { processed: 0, queued: 0, rejected: 0, avgWaitTime: 0 };
-  private batchQueue: any[] = [];
-  private batchTimeout: NodeJS.Timeout | null = null;
 
   async acquire(): Promise<void> {
     if (this.active < CONCURRENCY_LIMIT) {
@@ -153,68 +159,6 @@ class ConcurrencyManager {
     }
   }
 
-  // Semaphore-based batching inspired by Rust implementation
-  private semaphoreCount = 0;
-  private semaphoreQueue: Array<() => void> = [];
-
-  async acquireSemaphore(): Promise<void> {
-    if (this.semaphoreCount < MAX_IN_FLIGHT) {
-      this.semaphoreCount++;
-      return;
-    }
-
-    return new Promise<void>((resolve) => {
-      this.semaphoreQueue.push(resolve);
-    });
-  }
-
-  releaseSemaphore(): void {
-    this.semaphoreCount = Math.max(0, this.semaphoreCount - 1);
-
-    if (this.semaphoreQueue.length > 0) {
-      const resolve = this.semaphoreQueue.shift();
-      if (resolve) {
-        this.semaphoreCount++;
-        resolve();
-      }
-    }
-  }
-
-  // Enhanced batching for 600+ TPS with semaphore control
-  async enqueueBatch(task: any): Promise<void> {
-    this.batchQueue.push(task);
-
-    if (this.batchQueue.length >= BATCH_SIZE) {
-      await this.processBatch();
-    } else if (!this.batchTimeout) {
-      this.batchTimeout = setTimeout(() => this.processBatch(), 50); // Faster batch processing
-    }
-  }
-
-  private async processBatch(): Promise<void> {
-    if (this.batchTimeout) {
-      clearTimeout(this.batchTimeout);
-      this.batchTimeout = null;
-    }
-
-    if (this.batchQueue.length === 0) return;
-
-  const batch = this.batchQueue.splice(0);
-  this.log.debug({ batchSize: batch.length }, 'Processing request batch');
-
-    // Process batch with semaphore control like Rust implementation
-    const promises = batch.map(async (task) => {
-      await this.acquireSemaphore();
-      try {
-        await task();
-      } finally {
-        this.releaseSemaphore();
-      }
-    });
-
-    await Promise.allSettled(promises);
-  }
-
   // Multiple worker support for parallel processing
   initializeWorkers() {
     for (let i = 0; i < WORKER_COUNT; i++) {
@@ -227,7 +171,6 @@ class ConcurrencyManager {
       ...this.stats,
       active: this.active,
       queueLength: this.queue.length,
-      batchQueueLength: this.batchQueue.length,
       workers: WORKER_COUNT
     };
   }
@@ -236,22 +179,13 @@ class ConcurrencyManager {
     const stats = this.getStats();
     this.log.info({ stats }, 'Concurrency statistics');
   }
+
 }
 
 const concurrencyManager = new ConcurrencyManager();
 
 // Initialize workers for parallel processing
 concurrencyManager.initializeWorkers();
-
-// Connection pooling for multiple RPC providers
-const RPC_PROVIDERS = (process.env.RPC_PROVIDERS || 'https://rpc.testnet.fastnear.com').split(',');
-let currentRpcIndex = 0;
-
-function getNextRpcProvider() {
-  const provider = RPC_PROVIDERS[currentRpcIndex];
-  currentRpcIndex = (currentRpcIndex + 1) % RPC_PROVIDERS.length;
-  return provider;
-}
 
 // Enhanced logging with TPS calculation
 let requestCount = 0;
@@ -273,7 +207,6 @@ setInterval(() => {
   lastTpsCheck = now;
 }, 10000);
 
-// Memory monitoring for high-load scenarios
 if (process.env.ENABLE_MEMORY_MONITORING === 'true') {
   setInterval(() => {
     const memUsage = process.memoryUsage();
@@ -283,12 +216,11 @@ if (process.env.ENABLE_MEMORY_MONITORING === 'true') {
       heapTotalMb: Math.round(memUsage.heapTotal / 1024 / 1024),
     }, 'Memory usage snapshot');
 
-    // Force garbage collection if available (requires --expose-gc)
-    if (global.gc && memUsage.heapUsed > 500 * 1024 * 1024) { // > 500MB
+    if (global.gc && memUsage.heapUsed > 500 * 1024 * 1024) {
       metricsLog.warn('High memory usage detected, invoking garbage collection');
       global.gc();
     }
-  }, 30000); // Every 30 seconds
+  }, 30000);
 }
 
 // Graceful shutdown handling
@@ -363,73 +295,6 @@ const extractErrorMessage = (error: any): string => {
   return 'Unknown error occurred during transaction processing';
 };
 
-const getInvalidNonceDetails = (error: any) => {
-  const fromCause = error?.cause?.data?.TxExecutionError?.InvalidTxError?.InvalidNonce;
-  if (fromCause) return fromCause;
-  return error?.cause?.cause?.data?.TxExecutionError?.InvalidTxError?.InvalidNonce ?? null;
-};
-
-const isInvalidNonceError = (error: any) => Boolean(getInvalidNonceDetails(error));
-
-const findFailureInOutcome = (outcome: any): any | null => {
-  if (!outcome) return null;
-
-  const status = outcome.status || outcome.finalExecutionStatus;
-
-  if (status && typeof status === 'object' && 'Failure' in status) {
-    return status.Failure;
-  }
-
-  if (typeof status === 'string' && status.toLowerCase().includes('failure')) {
-    return status;
-  }
-
-  const receiptsOutcome = outcome.receiptsOutcome || outcome.receipts_outcome;
-  if (Array.isArray(receiptsOutcome)) {
-    for (const receipt of receiptsOutcome) {
-      const failure = findFailureInOutcome(receipt?.outcome);
-      if (failure) return failure;
-    }
-  }
-
-  return null;
-};
-
-// Retry helper with exponential backoff for view RPC calls
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const withRetry = async <T>(fn: () => Promise<T>, attempts = 5) => {
-  let delay = 200;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e: any) {
-      const code = e?.cause?.code ?? e?.code ?? e?.cause?.errno;
-      const message = e?.message ? String(e.message).toLowerCase() : '';
-      const retriableCodes = new Set([
-        -429,
-        'ETIMEDOUT',
-        'ECONNRESET',
-        'ECONNREFUSED',
-        'EAI_AGAIN',
-        'EPIPE',
-      ]);
-      const retriable =
-        retriableCodes.has(code as any) ||
-        message.includes('fetch failed') ||
-        message.includes('socket hang up');
-
-      if (retriable) {
-        requestLog.warn({ attempt: i + 1, code, message }, 'Retrying RPC view call after transient error');
-      }
-
-      if (!retriable || i === attempts - 1) throw e;
-      await sleep(delay);
-      delay *= 2;
-    }
-  }
-  throw new Error('unreachable');
-};
-
 
 app.use(bodyParser.json());
 
@@ -441,11 +306,34 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Get job status by jobId
+app.get('/transfer/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = persistence.getJob(jobId);
+  if (!job) return res.status(404).send({ error: 'Job not found' });
+  return res.send({ success: true, job });
+});
+
+// Lightweight metrics for monitoring
+app.get('/metrics', (req: Request, res: Response) => {
+  const all = persistence.listAllJobs();
+  const counts = all.reduce((acc: any, j: any) => {
+    acc[j.status] = (acc[j.status] || 0) + 1;
+    return acc;
+  }, {});
+  const uptimeMs = Date.now() - process.uptime() * 1000;
+  return res.send({
+    success: true,
+    counts,
+    uptimeMs,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.post('/send-ft', async (req: Request, res: Response) => {
   requestCount++; // Track TPS
   const isSandboxEnv = (process.env.NEAR_ENV || config.networkId) === 'sandbox';
-  await concurrencyManager.acquire();
-  try {
+
     const { receiverId, amount, memo, transfers } = req.body;
 
     // Support both single transfer and batch transfers
@@ -505,339 +393,59 @@ app.post('/send-ft', async (req: Request, res: Response) => {
 
       transfer.amount = amountStr;
     }
+    
+  let acquired = false;
+  try {
+    await concurrencyManager.acquire();
+    acquired = true;
 
-    // NEAR connection is initialized at server startup
-    const nearInterface = getNear();
-    const isSandbox = isSandboxEnv;
+    const results = await submitTransfers(
+      transferList.map((transfer) => ({
+        receiverId: transfer.receiverId,
+        amount: String(transfer.amount),
+        memo: transfer.memo,
+      })),
+    );
 
-    let signer: any = null;
-    let client: any = null;
-    let account: any = null;
-    let sandboxLease: {
-      account: any;
-      near: any;
-      publicKey: string;
-      index: number;
-      poolSize: number;
-      release: () => void;
-    } | null = null;
-    let signerLease: {
-      signer: any;
-      publicKey: string;
-      index: number;
-      poolSize: number;
-      release: () => void;
-    } | null = null;
-    let keyMeta: { publicKey: string; index: number; poolSize: number } | null = null;
-    let keyIdentifier = config.masterAccount;
+    const transactionHash = results[0]?.transactionHash || 'unknown';
+    const batchId = results[0]?.batchId;
+    const jobIds = results.map((result) => result.jobId);
 
-    try {
-      if (isSandbox) {
-        if (typeof nearInterface?.acquireAccount === 'function') {
-          const lease = await nearInterface.acquireAccount();
-          sandboxLease = lease;
-          account = lease.account;
-          keyMeta = {
-            publicKey: lease.publicKey,
-            index: lease.index,
-            poolSize: lease.poolSize,
-          };
-          keyIdentifier = keyMeta.publicKey;
-        } else if (nearInterface?.account) {
-          account = nearInterface.account;
-        } else {
-          return res.status(500).send({ error: 'Sandbox account not initialized' });
-        }
+    const mappedResults = results.map((result) => ({
+      jobId: result.jobId,
+      receiverId: result.receiverId,
+      amount: result.amount,
+      memo: result.memo,
+      transactionHash: result.transactionHash,
+      status: result.status,
+      batchId: result.batchId,
+      submittedAt: result.submittedAt,
+    }));
 
-        requestLog.debug({
-          accountId: account.accountId,
-          publicKey: keyMeta?.publicKey,
-          keyIndex: keyMeta?.index,
-          keyPoolSize: keyMeta?.poolSize,
-        }, 'Sandbox signer prepared');
-        requestLog.debug({ contractId: config.ftContract }, 'Sandbox FT contract resolved');
-      } else {
-        if (!nearInterface.signer) {
-          return res.status(500).send({ error: 'Testnet signer not initialized' });
-        }
-        if (typeof nearInterface.acquireSigner === 'function') {
-          const lease = await nearInterface.acquireSigner();
-          signerLease = lease;
-          signer = lease.signer;
-          client = nearInterface.client;
-          keyMeta = {
-            publicKey: lease.publicKey,
-            index: lease.index,
-            poolSize: lease.poolSize,
-          };
-          keyIdentifier = keyMeta.publicKey;
-          requestLog.debug({
-            key: keyMeta.publicKey,
-            keyIndex: keyMeta.index,
-            keyPoolSize: keyMeta.poolSize,
-          }, 'Allocated testnet signer key');
-        } else {
-          signer = nearInterface.signer;
-          client = nearInterface.client;
-        }
-      }
-
-      const decodeJson = ({ rawResult }: { rawResult: number[] }) => {
-        try {
-          const text = new TextDecoder().decode(Uint8Array.from(rawResult));
-          return JSON.parse(text);
-        } catch {
-          return null;
-        }
-      };
-
-      const uniqueReceivers = [...new Set(transferList.map(t => t.receiverId))];
-      const storageChecks: { [receiverId: string]: boolean } = {};
-      const skipStorageCheck = (process.env.SKIP_STORAGE_CHECK || '').toLowerCase() === 'true';
-      let bounds: any = null;
-
-      if (!skipStorageCheck) {
-        if (signer) {
-          bounds = await withRetry(() =>
-            client.callContractReadFunction({
-              contractAccountId: config.ftContract,
-              fnName: 'storage_balance_bounds',
-              response: { resultTransformer: decodeJson },
-            })
-          );
-        } else {
-          bounds = await withRetry(() =>
-            safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_bounds', {})
-          );
-        }
-
-        for (const receiverId of uniqueReceivers) {
-          let storage: any;
-          if (signer) {
-            storage = await withRetry(() =>
-              client.callContractReadFunction({
-                contractAccountId: config.ftContract,
-                fnName: 'storage_balance_of',
-                fnArgsJson: { account_id: receiverId },
-                response: { resultTransformer: decodeJson },
-              })
-            );
-          } else {
-            storage = await withRetry(() =>
-              safeView(account, config.nodeUrl, config.ftContract, 'storage_balance_of', { account_id: receiverId })
-            );
-          }
-
-          const storageJson: any = storage ?? {};
-          const registeredAmountStr = String(storageJson.total ?? storageJson.available ?? '0');
-          const isRegistered = storageJson != null && (() => {
-            try {
-              return BigInt(registeredAmountStr) > 0n;
-            } catch {
-              return false;
-            }
-          })();
-
-          storageChecks[receiverId] = isRegistered;
-        }
-      }
-
-      // 3) Build storage deposit + transfer actions
-      const depositsRequired = !skipStorageCheck
-        ? uniqueReceivers.filter((receiverId) => !storageChecks[receiverId])
-        : [];
-
-      const storageDepositAmount = (() => {
-        if (bounds && typeof bounds === 'object') {
-          if (typeof bounds.min === 'string') return bounds.min;
-          if (typeof bounds.min === 'number') return String(bounds.min);
-          if (typeof bounds.min === 'bigint') return bounds.min.toString();
-        }
-        if (process.env.STORAGE_MIN_DEPOSIT) {
-          return process.env.STORAGE_MIN_DEPOSIT;
-        }
-        return '1250000000000000000000';
-      })();
-
-      requestLog.debug(
-        {
-          skipStorageCheck,
-          storageChecks,
-          depositsRequired,
-          storageDepositAmount,
-        },
-        'Storage registration summary',
-      );
-
-      const transferActions: any[] = transferList.map((transfer) =>
-        functionCall({
-          fnName: 'ft_transfer',
-          fnArgsJson: {
-            receiver_id: transfer.receiverId,
-            amount: transfer.amount,
-            memo: transfer.memo || '',
-          },
-          gasLimit: teraGas('30'),
-          attachedDeposit: { yoctoNear: '1' },
-        }),
-      );
-
-      const storageDepositActions: any[] = depositsRequired.map((receiverId) =>
-        functionCall({
-          fnName: 'storage_deposit',
-          fnArgsJson: {
-            account_id: receiverId,
-            registration_only: true,
-          },
-          gasLimit: teraGas('30'),
-          attachedDeposit: { yoctoNear: storageDepositAmount },
-        }),
-      );
-
-      const apiTsActions: any[] = [...storageDepositActions, ...transferActions];
-
-      let nearJsActions: any[] = [];
-      if (account) {
-        const { transactions, utils } = await import('near-api-js');
-
-        const encodeArgs = (args: Record<string, unknown>) => Buffer.from(JSON.stringify(args));
-        const GAS = BigInt('30000000000000');
-        const toYoctoBigInt = (value: string) => {
-          if (/^\d+$/.test(value)) {
-            return BigInt(value);
-          }
-          const parsed = utils.format.parseNearAmount(value);
-          if (!parsed) {
-            throw new Error(`Unable to parse yocto value from ${value}`);
-          }
-          return BigInt(parsed);
-        };
-
-        const depositActions = depositsRequired.map((receiverId) =>
-          transactions.functionCall(
-            'storage_deposit',
-            encodeArgs({ account_id: receiverId, registration_only: true }),
-            GAS,
-            toYoctoBigInt(storageDepositAmount),
-          ),
-        );
-
-        const transferFunctionCalls = transferList.map((transfer) =>
-          transactions.functionCall(
-            'ft_transfer',
-            encodeArgs({
-              receiver_id: transfer.receiverId,
-              amount: transfer.amount,
-              memo: transfer.memo || '',
-            }),
-            GAS,
-            1n,
-          ),
-        );
-
-        nearJsActions = [...depositActions, ...transferFunctionCalls];
-      }
-
-      requestLog.debug(
-        {
-          depositCount: storageDepositActions.length,
-          transferCount: transferActions.length,
-          actionCount: apiTsActions.length,
-          nearJsActionCount: nearJsActions.length,
-        },
-        'Prepared NEAR actions',
-      );
-
-      let result: any;
-
-      if (account) {
-        if (nearJsActions.length === 0) {
-          requestLog.warn('No NEAR actions generated for sandbox transaction');
-          return res.status(400).send({ error: 'No actions generated for transaction' });
-        }
-
-        await throttleGlobal();
-        await throttleKey(keyIdentifier);
-        requestLog.debug({ actionCount: nearJsActions.length }, 'Submitting batched sandbox transaction');
-        result = await account.signAndSendTransaction({
-          receiverId: config.ftContract,
-          actions: nearJsActions,
-        });
-      } else {
-        const WAIT_UNTIL =
-          (process.env.WAIT_UNTIL as
-            | 'None'
-            | 'Included'
-            | 'ExecutedOptimistic'
-            | 'IncludedFinal'
-            | 'Executed'
-            | 'Final') || 'Final';
-
-        const sendWithNonceRetry = async () => {
-          let attempt = 0;
-          let backoffMs = 150;
-          while (true) {
-            try {
-              await throttleGlobal();
-              await throttleKey(keyIdentifier);
-              const tx = await signer.signTransaction({
-                receiverAccountId: config.ftContract,
-                actions: apiTsActions,
-              });
-
-              return await client.sendSignedTransaction({
-                signedTransaction: tx,
-                waitUntil: WAIT_UNTIL,
-              });
-            } catch (err: any) {
-              if (isInvalidNonceError(err) && attempt < NONCE_RETRY_LIMIT) {
-                const nonceDetails = getInvalidNonceDetails(err);
-                attempt += 1;
-                requestLog.warn({
-                  attempt,
-                  nonceDetails,
-                  waitUntil: WAIT_UNTIL,
-                }, 'Retrying transaction due to nonce conflict');
-                await sleep(backoffMs);
-                backoffMs = Math.min(backoffMs * 2, 1000);
-                continue;
-              }
-              throw err;
-            }
-          }
-        };
-
-        result = await sendWithNonceRetry();
-      }
-
-      const failure = findFailureInOutcome(result);
-      if (failure) {
-        requestLog.error({ failure }, 'On-chain failure detected');
-        return res.status(500).send({
-          error: 'FT transfer failed on-chain',
-          details: failure,
-          result,
-        });
-      }
-
-      const transferCount = transferList.length;
-      res.send({
-        message: `FT transfer${transferCount > 1 ? 's' : ''} initiated successfully`,
-        transfers: transferCount,
-        result
+    if (results.length === 1) {
+      const single = mappedResults[0];
+      return res.send({
+        success: true,
+        jobId: single.jobId,
+        transactionHash: single.transactionHash,
+        receiverId: single.receiverId,
+        amount: single.amount,
+        status: single.status,
+        batchId: single.batchId,
+        submittedAt: single.submittedAt,
+        message: 'FT transfer executed successfully',
       });
-    } finally {
-      try {
-        sandboxLease?.release?.();
-      } catch (releaseError: any) {
-        requestLog.warn({ err: releaseError?.message || releaseError }, 'Failed to release sandbox account lease');
-      }
-      try {
-        signerLease?.release?.();
-      } catch (releaseError: any) {
-        requestLog.warn({ err: releaseError?.message || releaseError }, 'Failed to release signer key lease');
-      }
     }
+
+    res.send({
+      success: true,
+      jobIds,
+      transactionHash,
+      transfers: results.length,
+      batchId,
+      results: mappedResults,
+      message: `FT transfers executed successfully (batch size ${results.length})`,
+    });
   } catch (error: any) {
     const txExecutionError = error?.cause?.data?.TxExecutionError;
     const errorMessage = extractErrorMessage(error);
@@ -884,7 +492,9 @@ app.post('/send-ft', async (req: Request, res: Response) => {
         ...(debugInfo ? { debug: debugInfo } : {}),
       });
   } finally {
-    concurrencyManager.release();
+    if (acquired) {
+      concurrencyManager.release();
+    }
   }
 });
 
@@ -893,6 +503,9 @@ const startServer = async () => {
     // Initialize NEAR connection first
     await initNear();
     log.info('NEAR connection initialized successfully');
+
+  requeueOutstandingJobs();
+  log.info('Pending jobs re-queued from persistence');
 
     // Start server after NEAR is ready
     log.info({ port }, 'Server ready to accept requests');

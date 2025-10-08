@@ -1,49 +1,72 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 90
-    pool: 150
-    maxSockets: 400
+    timeout: 120
+    pool: 200
+    maxSockets: 600
   phases:
-    # Extended warm-up to prevent instantaneous spikes
-    - duration: 60
-      arrivalRate: 5
-      rampTo: 25
-      name: "Extended Warm-up"
+    # Warm-up phase: 60 seconds ramp to 50 TPS
+    - duration: 45
+      arrivalRate: 10
+      rampTo: 50
+      name: "Warm-up (0-45s)"
 
-    # Gradual ramp towards target throughput (100 TPS)
-    - duration: 120
-      arrivalRate: 25
+    # Ramp to target: 60 seconds ramp from 50 to 100 TPS
+    - duration: 60
+      arrivalRate: 50
       rampTo: 100
-      name: "Ramp to Target"
+      name: "Ramp to Target (60-120s)"
 
-    # Sustained validation window at target TPS
-    - duration: 120
+    # SUSTAINED LOAD: 10 MINUTES @ 100 TPS (60,000 transfers)
+    # This is the critical test phase for the bounty requirement
+    - duration: 600
       arrivalRate: 100
-      name: "Sustained Target"
+      name: "Sustained 100 TPS - 10 Minutes (120-720s)"
 
-    # Optional surge phase to observe saturation behaviour
-    - duration: 60
+    # Cool-down: 30 seconds
+    - duration: 30
       arrivalRate: 100
-      rampTo: 160
-      name: "Controlled Surge"
+      rampTo: 10
+      name: "Cool-down (720-750s)"
 
   variables:
     receiverId:
       - "user1.test.near"
-      - "user2.test.near" 
+      - "user2.test.near"
       - "user3.test.near"
+      - "user4.test.near"
+      - "user5.test.near"
       - "alice.test.near"
       - "bob.test.near"
+      - "charlie.test.near"
     
     amount:
-      - "1000000000000000000000000"   # 1 token
+      - "1000000000000000000000000"   # 1 token (18 decimals)
       - "5000000000000000000000000"   # 5 tokens
       - "10000000000000000000000000"  # 10 tokens
+      - "100000000000000000000000"    # 0.1 token
 
 scenarios:
-  - name: "Batched FT Transfers"
-    weight: 70
+  # Primary scenario: Single FT transfer (most common use case)
+  - name: "Single FT Transfer"
+    weight: 80
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "100TPS-10min benchmark - {{ $timestamp }}"
+          expect:
+            - statusCode: 200
+            - json:
+                success: true
+
+  # Secondary scenario: Batched transfers (efficiency test)
+  - name: "Batched FT Transfers (2x)"
+    weight: 15
     flow:
       - post:
           url: "/send-ft"
@@ -53,31 +76,27 @@ scenarios:
             transfers:
               - receiverId: "{{ receiverId }}"
                 amount: "{{ amount }}"
-                memo: "Benchmark batch A"
+                memo: "Batch A"
               - receiverId: "{{ receiverId }}"
                 amount: "{{ amount }}"
-                memo: "Benchmark batch B"
+                memo: "Batch B"
           expect:
             - statusCode: 200
+            - json:
+                success: true
 
-  - name: "Single FT Transfer"
-    weight: 20
-    flow:
-      - post:
-          url: "/send-ft"
-          headers:
-            Content-Type: "application/json"
-          json:
-            receiverId: "{{ receiverId }}"
-            amount: "{{ amount }}"
-            memo: "Artillery load test - {{ $timestamp }}"
-          expect:
-            - statusCode: 200
-
+  # Monitoring: Health checks
   - name: "Health Check"
-    weight: 10
+    weight: 5
     flow:
       - get:
           url: "/health"
           expect:
             - statusCode: 200
+            - contentType: json
+
+# Performance assertions
+ensure:
+  maxErrorRate: 5              # Max 5% error rate
+  p95: 5000                    # 95th percentile response time < 5s
+  p99: 10000                   # 99th percentile response time < 10s

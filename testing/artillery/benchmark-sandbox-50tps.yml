@@ -1,0 +1,81 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 100
+    pool: 100
+    maxSockets: 300
+  phases:
+    # Warm-up: 30 seconds ramp to 20 TPS
+    - duration: 30
+      arrivalRate: 5
+      rampTo: 20
+      name: "Warm-up (0-30s)"
+
+    # Ramp to target: 30 seconds ramp to 50 TPS
+    - duration: 30
+      arrivalRate: 20
+      rampTo: 50
+      name: "Ramp to 50 TPS (30-60s)"
+
+    # SUSTAINED LOAD: 10 MINUTES @ 50 TPS (30,000 transfers)
+    # Realistic target for sandbox environment
+    - duration: 600
+      arrivalRate: 50
+      name: "Sustained 50 TPS - 10 Minutes (60-660s)"
+
+    # Cool-down: 20 seconds
+    - duration: 20
+      arrivalRate: 50
+      rampTo: 5
+      name: "Cool-down (660-680s)"
+
+  variables:
+    receiverId:
+      - "user1.test.near"
+      - "user2.test.near" 
+      - "user3.test.near"
+      - "user4.test.near"
+      - "user5.test.near"
+      - "alice.test.near"
+      - "bob.test.near"
+      - "charlie.test.near"
+    
+    amount:
+      - "1000000000000000000000000"   # 1 token
+      - "5000000000000000000000000"   # 5 tokens
+      - "10000000000000000000000000"  # 10 tokens
+      - "100000000000000000000000"    # 0.1 token
+
+scenarios:
+  # Primary scenario: Single FT transfer
+  - name: "Single FT Transfer"
+    weight: 85
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Sandbox 50TPS-10min - {{ $timestamp }}"
+          expect:
+            - statusCode: 200
+            - json:
+                success: true
+
+  # Monitoring: Health checks
+  - name: "Health Check"
+    weight: 15
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+# Performance assertions for sandbox
+ensure:
+  maxErrorRate: 15            # Sandbox allows higher error rate
+  p95: 8000                   # Sandbox has higher latency
+  p99: 15000                  # Sandbox P99 can be high

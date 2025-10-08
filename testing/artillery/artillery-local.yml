@@ -1,25 +1,25 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 60          # seconds
-    pool: 110             # enable keep-alive / reuse sockets
-    maxSockets: 350
+    timeout: 30          # seconds
+    pool: 100            # enable keep-alive / reuse sockets
+    maxSockets: 256
   phases:
     # Extended warm-up so sandbox RPC can stabilise
-    - duration: 45
+    - duration: 60
       arrivalRate: 5
-      rampTo: 70
+      rampTo: 212
       name: "Extended Warm-up"
 
     # Gradual ramp towards the configured target TPS
-    - duration: 100
-      arrivalRate: 70
-      rampTo: 150
+    - duration: 120
+      arrivalRate: 212
+      rampTo: 425
       name: "Ramp to Target"
 
     # Sustained load at TARGET for validation
     - duration: 120
-      arrivalRate: 150
+      arrivalRate: 425
       name: "Sustained Load"
 
   variables:

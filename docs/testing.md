@@ -1,6 +1,6 @@
 # Frontend & Service Testing Strategy
 
-This project layers several automated checks to keep the sample frontend UI and the NEAR FT service healthy. The current strategy focuses on fast feedback for contributors and parity between local development and CI.
+This project layers several automated checks to keep the sample frontend UI and the NEAR FT service healthy. The current strategy focuses on fast feedback for contributors and parity between local development and CI, while ensuring the new persistence-backed transfer coordinator keeps durable job state intact.
 
 ## 1. Type safety first
 
@@ -16,7 +16,7 @@ This project layers several automated checks to keep the sample frontend UI and 
 - **Scope:**
   - Loads `examples/send-ft-frontend` in Chromium.
   - Mocks `/send-ft` and `/health` responses to keep tests deterministic.
-  - Asserts request payload formatting, response rendering, loading and error states, and the request log panel.
+  - Asserts request payload formatting, response rendering, loading and error states, the request log panel, and the durability metadata (`jobId`, `transactionHash`, `status`).
 - **Why this approach:**
   - Keeps the static demo UI functional without requiring a running NEAR node during tests.
   - Mirrors how real users interact with the `/send-ft` endpoint, including form validation.
@@ -28,7 +28,7 @@ This project layers several automated checks to keep the sample frontend UI and 
 - **Commands:**
   - `npm run test:sandbox` (near-workspaces powered local chain)
   - `npm run test:testnet` (real FastNEAR RPC)
-- **Scope:** Spins up the API, deploys/contracts, executes real `/send-ft` calls, and validates on-chain balances.
+- **Scope:** Spins up the API, deploys/contracts, executes real `/send-ft` calls, validates on-chain balances, and confirms that persisted jobs can be queried via `/transfer/:jobId`.
 - **Usage:** Longer-running checks triggered manually or in dedicated pipelines to avoid leaking secrets.
 
 ## 4. Security posture
@@ -45,12 +45,12 @@ npm install
 npx playwright install --with-deps
 
 # Fast feedback loop
-yarn?  # (optional alternative)
 npm run typecheck
 npm run test:frontend
 ```
 
 - Keep VS Code Playwright or Testing sidebar open for per-test debugging.
+- When validating durability end-to-end, run the API and worker locally (`npm run start:<env>` + `npm run run:worker:<env>`) before launching integration tests so persisted jobs get replayed.
 - To mimic CI, run all commands together:
 
 ```bash

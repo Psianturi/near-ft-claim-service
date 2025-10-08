@@ -53,6 +53,8 @@ scenarios:
                 memo: "Smoke batch B"
           expect:
             - statusCode: 200
+            - json:
+                success: true
 
   - name: "Single FT Transfer"
     weight: 30
@@ -67,6 +69,8 @@ scenarios:
             memo: "Artillery smoke - {{ $timestamp }}"
           expect:
             - statusCode: 200
+            - json:
+                success: true
 
   - name: "Health Check"
     weight: 10

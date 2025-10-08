@@ -45,7 +45,7 @@ The request log at the bottom lists each call with a timestamp to help with manu
 
 ## Capturing backend logs
 
-The frontend only reports HTTP status codes. To see the detailed blockchain/queue errors:
+The frontend only reports HTTP status codes. To see the detailed blockchain/coordinator errors:
 
 ```bash
 # From ft-claiming-service/
@@ -58,7 +58,7 @@ Leave this terminal open to stream structured pino logs. For long runs you can r
 npm run start:testnet | tee api.log
 ```
 
-Later, inspect with `tail -f api.log` or search for specific error IDs. Each failed request logs the NEAR RPC error, queue rejection, or validation issue.
+Later, inspect with `tail -f api.log` or search for specific error IDs. Each failed request logs the NEAR RPC error, coordinator rejection, or validation issue.
 
 ## Deploying the demo to Vercel
 

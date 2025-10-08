@@ -15,7 +15,7 @@ echo "🎯 Starting Artillery Load Test for $ENVIRONMENT environment..."
 case $ENVIRONMENT in
   sandbox)
     echo "🏠 Local Sandbox Testing Mode"
-    export NODE_URL="http://127.0.0.1:3000"
+    export NODE_URL="http://127.0.0.1:3030"
     export TARGET_URL="http://127.0.0.1:3000"
     ;;
   testnet)
@@ -58,6 +58,16 @@ if ! curl -sS "${TARGET_URL}/health" >/dev/null 2>&1; then
 fi
 
 echo "✅ API service is running at ${TARGET_URL}"
+
+if [ "$ENVIRONMENT" = "sandbox" ]; then
+  SANDBOX_RPC_STATUS_URL="${SANDBOX_RPC_STATUS_URL:-${NODE_URL%/}/status}"
+  if ! curl -sS "$SANDBOX_RPC_STATUS_URL" >/dev/null 2>&1; then
+    echo "❌ NEAR sandbox RPC not responding at ${SANDBOX_RPC_STATUS_URL}"
+    echo "💡 Start the sandbox first (e.g. ./testing/test-complete-pipeline.sh or npx near-sandbox run)"
+    exit 1
+  fi
+  echo "✅ Sandbox RPC is responding at ${SANDBOX_RPC_STATUS_URL}"
+fi
 
 # Prepare Artillery configuration (allows override via ARTILLERY_CONFIG env)
 ARTILLERY_CONFIG="${ARTILLERY_CONFIG:-}"

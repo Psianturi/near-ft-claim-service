@@ -18,8 +18,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.x'
           cache: 'npm'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install dependencies
         run: npm ci
@@ -27,22 +35,22 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Build (tsc)
-        run: npm run build
-
       - name: Type check
         run: npm run typecheck
 
+      - name: Build (tsc)
+        run: npm run build
+
       - name: Frontend smoke tests
         run: npm run test:frontend
+
+      - name: Security audit (critical only)
+        run: npm run security
 
       - name: Sandbox integration tests
         env:
           CI: 'true'
         run: npm run test:sandbox
-
-      - name: Security audit (critical only)
-        run: npm run security
 
       - name: Upload Playwright report on failure
         if: failure()

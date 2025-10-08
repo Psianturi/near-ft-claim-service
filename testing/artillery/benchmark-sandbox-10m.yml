@@ -56,6 +56,8 @@ scenarios:
                 memo: "Benchmark batch C"
           expect:
             - statusCode: 200
+            - json:
+                success: true
 
   - name: "Single FT Transfer"
     weight: 15
@@ -70,6 +72,8 @@ scenarios:
             memo: "Benchmark 100 TPS - {{ $timestamp }}"
           expect:
             - statusCode: 200
+            - json:
+                success: true
 
   - name: "Health Check"
     weight: 5

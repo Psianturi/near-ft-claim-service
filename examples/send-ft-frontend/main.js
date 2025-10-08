@@ -167,28 +167,33 @@ function formatSuccessSummary(body, requestPayload) {
   const lines = [];
   lines.push(body.message || 'Transfer request accepted');
 
-  if (typeof body.transfers !== 'undefined') {
+  if (typeof body.transfers === 'number') {
     lines.push(`Transfers: ${body.transfers}`);
   }
 
-  const txHash = body.result?.transaction?.hash;
-  if (txHash) {
-    lines.push(`Transaction: ${txHash}`);
-  }
-
-  const receivers = parseEventLogs(body.result?.receiptsOutcome);
-  if (receivers.length > 0) {
-    lines.push('Receivers:');
-    for (const { receiverId, amount } of receivers) {
-      lines.push(`• ${receiverId} (+${formatYocto(amount)})`);
+  if (Array.isArray(body.results) && body.results.length > 0) {
+    lines.push('Transfers:');
+    for (const result of body.results) {
+      const receiver = result.receiverId || requestPayload?.receiverId;
+      const amount = result.amount || requestPayload?.amount;
+      const suffix = result.transactionHash ? ` → ${result.transactionHash}` : '';
+      lines.push(`• ${receiver ?? 'unknown'} (${amount ?? 'n/a'})${suffix}`);
     }
   } else if (requestPayload?.receiverId) {
-    lines.push(`Receiver: ${requestPayload.receiverId}`);
+    const suffix = body.transactionHash ? ` → ${body.transactionHash}` : '';
+    lines.push(`Receiver: ${requestPayload.receiverId}${suffix}`);
   }
 
-  const status = body.result?.finalExecutionStatus;
-  if (status) {
-    lines.push(`Final status: ${status}`);
+  if (body.jobId) {
+    lines.push(`Job ID: ${body.jobId}`);
+  }
+
+  if (body.transactionHash) {
+    lines.push(`Transaction: ${body.transactionHash}`);
+  }
+
+  if (body.status) {
+    lines.push(`Final status: ${body.status}`);
   }
 
   return lines.join('\n');

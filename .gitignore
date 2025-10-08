@@ -7,6 +7,13 @@
 
 # Sandbox data
 /neardev
+/data/
+/tmp/
+/tmpbin/
+
+# Runtime artifacts
+service.pid
+*.pid
 
 
 # Environment variables

@@ -1,0 +1,73 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 60
+    pool: 50
+    maxSockets: 150
+  phases:
+    # Warm-up: 20 seconds ramp to 10 TPS
+    - duration: 20
+      arrivalRate: 2
+      rampTo: 10
+      name: "Warm-up (0-20s)"
+
+    # Ramp: 20 seconds ramp to 20 TPS
+    - duration: 20
+      arrivalRate: 10
+      rampTo: 20
+      name: "Ramp to 20 TPS (20-40s)"
+
+    # SUSTAINED LIGHT LOAD: 2 MINUTES @ 20 TPS (2,400 transfers)
+    # Conservative test to avoid rate limits
+    - duration: 120
+      arrivalRate: 20
+      name: "Sustained 20 TPS - 2 Minutes (40-160s)"
+
+    # Cool-down: 10 seconds
+    - duration: 10
+      arrivalRate: 20
+      rampTo: 2
+      name: "Cool-down (160-170s)"
+
+  variables:
+    receiverId:
+      - "posma-badge.testnet"
+    
+    amount:
+      - "100000000"              # Small amount (1 token with 8 decimals)
+      - "500000000"              # 5 tokens
+      - "1000000000"             # 10 tokens
+
+scenarios:
+  # Primary: Single transfers only (simpler for testing)
+  - name: "Single FT Transfer"
+    weight: 90
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Testnet light test - {{ $timestamp }}"
+          expect:
+            - statusCode: 200
+            - json:
+                success: true
+
+  # Monitoring
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+# Light assertions (for rate-limited testing)
+ensure:
+  maxErrorRate: 10            # Allow 10% errors
+  p95: 8000                   # More relaxed for testnet
+  p99: 15000

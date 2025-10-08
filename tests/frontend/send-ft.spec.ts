@@ -22,8 +22,15 @@ test.describe('Send FT demo UI', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          status: 'success',
-          transactionHashes: ['mock-transaction-hash'],
+          success: true,
+          jobId: 'job-123',
+          transactionHash: 'mock-transaction-hash',
+          receiverId: 'receiver.testnet',
+          amount: '1000',
+          status: 'submitted',
+          batchId: 'batch-1',
+          submittedAt: '2025-01-01T00:00:00Z',
+          message: 'FT transfer executed successfully',
         }),
       });
     });
@@ -43,14 +50,14 @@ test.describe('Send FT demo UI', () => {
     await expect(submitButton).toBeDisabled();
 
   const responsePanel = page.locator('#response');
-  await expect(responsePanel).toContainText('Transfer request accepted');
-  await expect(responsePanel).toContainText('Receiver: receiver.testnet');
+  await expect(responsePanel).toContainText('FT transfer executed successfully');
+  await expect(responsePanel).toContainText('Transaction: mock-transaction-hash');
   await expect(responsePanel).not.toHaveAttribute('data-state', 'error');
 
   const rawDetails = page.locator('#raw-response');
   await expect(rawDetails).toBeVisible();
   await rawDetails.locator('summary').click();
-  await expect(page.locator('#raw-response-body')).toContainText('mock-transaction-hash');
+  await expect(page.locator('#raw-response-body')).toContainText('job-123');
 
     await expect(submitButton).toBeEnabled();
 

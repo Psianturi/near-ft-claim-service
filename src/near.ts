@@ -26,19 +26,7 @@ class NearConnectionManager {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
 
-  // near-api-js properties (sandbox)
-  private nearApiJsNear: any = null;
-  private nearApiJsAccount: any = null;
-  private sandboxAccountPool: Array<{
-    account: any;
-    near: any;
-    publicKey: string;
-  }> = [];
-  private sandboxAccountActive: number[] = [];
-  private sandboxAccountCursor = 0;
-  private sandboxMaxPerKey = 1;
-
-  // @eclipseeer/near-api-ts properties (testnet/mainnet)
+  // @eclipseeer/near-api-ts properties (unified for all environments)
   private eclipseeerClient: any = null;
   private eclipseeerKeyService: any = null;
   private eclipseeerSigner: any = null;
@@ -49,8 +37,6 @@ class NearConnectionManager {
   private eclipseeerSignerActive: number[] = [];
   private eclipseeerSignerCursor = 0;
   private eclipseeerMaxPerKey = 1;
-
-  private isUsingNearApiJs = false;
 
   private constructor() {}
 
@@ -122,12 +108,30 @@ class NearConnectionManager {
   }
 
   private async _initInternal(): Promise<void> {
+    // Allow a quick mock mode for local smoke tests where an actual RPC is not available.
+    if ((process.env.SKIP_NEAR_INIT || '').toLowerCase() === 'true') {
+      log.warn('SKIP_NEAR_INIT=true, using mock NEAR client for local smoke tests');
+      // Provide a minimal mock client and signer
+      this.eclipseeerClient = {
+        callContractReadFunction: async () => null,
+        sendSignedTransaction: async () => ({ transaction: { hash: 'mock-tx-hash' }, finalExecutionStatus: 'submitted' }),
+        getAccountKeys: async () => ({ accountKeys: [] }),
+      } as any;
+      this.eclipseeerSigner = {
+        signTransaction: async (opts: any) => ({ mock: true, ...opts }),
+      } as any;
+      this.eclipseeerSignerPool = [{ signer: this.eclipseeerSigner, publicKey: 'ed25519:MOCK' }];
+      this.eclipseeerSignerActive = [0];
+      this.eclipseeerSignerCursor = 0;
+      this.eclipseeerMaxPerKey = 1;
+      this.initialized = true;
+      return;
+    }
     try {
       log.info('Starting NEAR connection initialization');
 
-      if (config.networkId === 'sandbox') {
-        await this.initNearApiJs();
-      } else if (config.networkId === 'testnet' || config.networkId === 'mainnet') {
+      // Use @eclipseeer/near-api-ts for all environments for consistency and performance
+      if (config.networkId === 'sandbox' || config.networkId === 'testnet' || config.networkId === 'mainnet') {
         await this.initEclipseeerNearApiTs();
       } else {
         throw new Error(`Unsupported networkId: ${config.networkId}. Supported: sandbox, testnet, mainnet`);
@@ -142,72 +146,42 @@ class NearConnectionManager {
     }
   }
 
-  // Sandbox: connect using simplified near-api-js approach (like near-ft-claiming-service)
-  private async initNearApiJs(): Promise<void> {
-    const { connect, keyStores, utils } = await import('near-api-js');
-
-    const masterAccountId = config.masterAccount || 'test.near';
-    const nodeUrl = config.nodeUrl || 'http://127.0.0.1:3030';
-
-    const primaryKey = process.env.MASTER_ACCOUNT_PRIVATE_KEY
-      ? normalizeKey(process.env.MASTER_ACCOUNT_PRIVATE_KEY)
-      : null;
-    const keysEnv = process.env.MASTER_ACCOUNT_PRIVATE_KEYS || '';
-    const keyStrings = keysEnv
-      .split(',')
-      .map((value) => normalizeKey(value))
-      .filter((value) => value.length > 0);
-
-    if (primaryKey && !keyStrings.includes(primaryKey)) {
-      keyStrings.unshift(primaryKey);
-    }
-
-    if (keyStrings.length === 0) {
-      throw new Error('MASTER_ACCOUNT_PRIVATE_KEY or MASTER_ACCOUNT_PRIVATE_KEYS environment variable is required for sandbox');
-    }
-
-    this.sandboxAccountPool = [];
-    this.sandboxAccountActive = [];
-    this.sandboxAccountCursor = 0;
-    this.sandboxMaxPerKey = Math.max(1, parseInt(process.env.SANDBOX_MAX_IN_FLIGHT_PER_KEY || '1', 10));
-
-    for (const key of keyStrings) {
-      const keyStore = new keyStores.InMemoryKeyStore();
-      const keyPair = utils.KeyPair.fromString(key as any);
-      await keyStore.setKey('sandbox', masterAccountId, keyPair);
-
-      const near = await connect({
-        networkId: 'sandbox',
-        nodeUrl,
-        keyStore,
-      });
-
-      const account = await near.account(masterAccountId);
-
-      this.sandboxAccountPool.push({
-        account,
-        near,
-        publicKey: keyPair.getPublicKey().toString(),
-      });
-      this.sandboxAccountActive.push(0);
-    }
-
-    this.nearApiJsNear = this.sandboxAccountPool[0]?.near ?? null;
-    this.nearApiJsAccount = this.sandboxAccountPool[0]?.account ?? null;
-
-    log.info({
-      nodeUrl,
-      masterAccountId,
-      keyCount: this.sandboxAccountPool.length,
-      maxPerKey: this.sandboxMaxPerKey,
-    }, 'Sandbox RPC initialized (near-api-js)');
-
-    this.isUsingNearApiJs = true;
-    log.info('near-api-js sandbox connection ready');
-  }
-
-  // Testnet/Mainnet: keep using @eclipseeer/near-api-ts
+  // Unified initialization using @eclipseeer/near-api-ts for all environments
   private async initEclipseeerNearApiTs(): Promise<void> {
+    // Short-circuit to a mock NEAR client for smoke tests/local dev when requested
+    const skip = (process.env.SKIP_NEAR_INIT || process.env.MOCK_NEAR || '').toLowerCase() === 'true';
+    if (skip) {
+      log.warn('SKIP_NEAR_INIT=true detected — initializing mock NEAR client for local smoke tests');
+      // Minimal mock client/signers expected by the rest of the code
+      this.eclipseeerClient = {
+        callContractReadFunction: async (opts: any) => {
+          // storage_balance_of or storage_balance_bounds => return null/empty
+          return null;
+        },
+        sendSignedTransaction: async ({ signedTransaction }: any) => {
+          const txHash = 'mock-' + Date.now().toString(36);
+          return { transaction: { hash: txHash }, finalExecutionStatus: 'submitted' };
+        },
+        // best-effort getTransaction for reconciler
+        getTransaction: async (args: any) => {
+          return { status: 'SuccessValue', args };
+        },
+      } as any;
+
+      // minimal signer implementation
+      this.eclipseeerSigner = {
+        signTransaction: async (opts: any) => {
+          return { mock: true, ...opts };
+        },
+      } as any;
+
+      // create a single-entry signer pool so acquireSigner works
+      this.eclipseeerSignerPool = [{ signer: this.eclipseeerSigner, publicKey: 'ed25519:MOCK' }];
+      this.eclipseeerSignerActive = [0];
+      this.eclipseeerMaxPerKey = 1;
+      log.info({ networkId: config.networkId }, 'Mock eclipseeer client initialized');
+      return;
+    }
     const {
       createClient,
       createMemoryKeyService,
@@ -486,12 +460,17 @@ class NearConnectionManager {
     this.eclipseeerSignerPool = [];
     this.eclipseeerSignerActive = [];
     this.eclipseeerSignerCursor = 0;
+    // Use unified MAX_IN_FLIGHT_PER_KEY for all environments
+    const maxPerKeyEnv = config.networkId === 'sandbox'
+      ? process.env.SANDBOX_MAX_IN_FLIGHT_PER_KEY
+      : process.env.TESTNET_MAX_IN_FLIGHT_PER_KEY;
+    
     this.eclipseeerMaxPerKey = Math.max(
       1,
       parseInt(
-        process.env.TESTNET_MAX_IN_FLIGHT_PER_KEY ||
+        maxPerKeyEnv ||
           process.env.MAX_IN_FLIGHT_PER_KEY ||
-          '4',
+          '8',
         10,
       ),
     );
@@ -514,15 +493,15 @@ class NearConnectionManager {
       this.eclipseeerSignerActive.push(0);
     }
 
-    this.isUsingNearApiJs = false;
     const derivedHeaderCount = Object.keys(baseHeaders).length + (fastnearKey ? 2 : 0);
 
     log.info({
+      networkId: config.networkId,
       keyCount: privateKeys.length,
       rpcUrlCount: rpcUrlsEnv ? rpcUrlsEnv.split(',').length : 1,
       headerCount: derivedHeaderCount,
       maxPerKey: this.eclipseeerMaxPerKey,
-    }, '@eclipseeer/near-api-ts connection ready');
+    }, '@eclipseeer/near-api-ts connection ready for all environments');
   }
 
   getNear(): any {
@@ -530,91 +509,26 @@ class NearConnectionManager {
       throw new Error('NEAR connection not initialized. Call init() first.');
     }
 
-    if (this.isUsingNearApiJs) {
-      if (!this.nearApiJsAccount) {
-        throw new Error('Sandbox account not initialized');
-      }
-      return {
-        account: this.nearApiJsAccount,
-        near: this.nearApiJsNear,
-        acquireAccount: () => this.acquireSandboxAccount(),
-      };
-    } else {
-      if (!this.eclipseeerSigner) {
-        throw new Error('Testnet signer not initialized');
-      }
-      return {
-        signer: this.eclipseeerSigner,
-        client: this.eclipseeerClient,
-        acquireSigner: () => this.acquireTestnetSigner(),
-      };
+    if (!this.eclipseeerSigner) {
+      throw new Error('Signer not initialized');
     }
+    
+    return {
+      signer: this.eclipseeerSigner,
+      client: this.eclipseeerClient,
+      acquireSigner: () => this.acquireSigner(),
+    };
   }
 
-  private async acquireSandboxAccount(): Promise<{
-    account: any;
-    near: any;
-    publicKey: string;
-    index: number;
-    poolSize: number;
-    release: () => void;
-  }> {
-    if (!this.isUsingNearApiJs) {
-      throw new Error('Sandbox account pool is only available when using near-api-js');
-    }
-
-    if (this.sandboxAccountPool.length === 0) {
-      throw new Error('Sandbox account pool not initialized');
-    }
-
-    const poolSize = this.sandboxAccountPool.length;
-
-    while (true) {
-      for (let i = 0; i < poolSize; i++) {
-        const index = (this.sandboxAccountCursor + i) % poolSize;
-        const active = this.sandboxAccountActive[index] ?? 0;
-        if (active < this.sandboxMaxPerKey) {
-          this.sandboxAccountCursor = (index + 1) % poolSize;
-          this.sandboxAccountActive[index] = active + 1;
-          const slot = this.sandboxAccountPool[index];
-          return {
-            account: slot.account,
-            near: slot.near,
-            publicKey: slot.publicKey,
-            index,
-            poolSize,
-            release: () => this.releaseSandboxAccount(index),
-          };
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-  }
-
-  private releaseSandboxAccount(index: number): void {
-    if (this.sandboxAccountPool.length === 0) {
-      return;
-    }
-
-    const active = this.sandboxAccountActive[index] ?? 0;
-    const nextActive = Math.max(0, active - 1);
-    this.sandboxAccountActive[index] = nextActive;
-  }
-
-  private async acquireTestnetSigner(): Promise<{
+  private async acquireSigner(): Promise<{
     signer: any;
     publicKey: string;
     index: number;
     poolSize: number;
     release: () => void;
   }> {
-    if (this.isUsingNearApiJs) {
-      throw new Error('Testnet signer pool is only available when using @eclipseeer/near-api-ts');
-    }
-
     if (this.eclipseeerSignerPool.length === 0) {
-      throw new Error('Testnet signer pool not initialized');
+      throw new Error('Signer pool not initialized');
     }
 
     const poolSize = this.eclipseeerSignerPool.length;
@@ -632,7 +546,7 @@ class NearConnectionManager {
             publicKey: slot.publicKey,
             index,
             poolSize,
-            release: () => this.releaseTestnetSigner(index),
+            release: () => this.releaseSigner(index),
           };
         }
       }
@@ -641,7 +555,7 @@ class NearConnectionManager {
     }
   }
 
-  private releaseTestnetSigner(index: number): void {
+  private releaseSigner(index: number): void {
     if (this.eclipseeerSignerPool.length === 0) {
       return;
     }

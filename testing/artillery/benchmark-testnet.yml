@@ -1,39 +1,32 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 42
-    pool: 100
-    maxSockets: 205
+    timeout: 115          
+    pool: 200            
+    maxSockets: 600      
   phases:
-    # Warm-up phase
-    - duration: 20
-      arrivalRate: 5
-      name: "Warm-up"
+    # EXACTLY 10 MINUTES TOTAL (600 seconds)
     
-    # Ramp-up phase
-    - duration: 40
-      arrivalRate: 20
-      rampTo: 75
-      name: "Ramp-up"
+    # Quick warm-up: 30s
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 50
+      name: "Warm-up (0-30s)"
     
-    # Peak load phase
-    - duration: 45
-      arrivalRate: 75
-      name: "Peak Load"
+    # Ramp to target: 30s
+    - duration: 30
+      arrivalRate: 50
+      rampTo: 100
+      name: "Ramp to 100 TPS (30-60s)"
     
-    # High-load stress test
-    - duration: 250
+    # SUSTAINED LOAD: 540 seconds @ 100 TPS (54,000 transfers)
+    - duration: 540
       arrivalRate: 100
-      rampTo: 150
-      name: "Stress Test"
+      name: "Sustained 100 TPS (60-600s)"
   
   variables:
     receiverId:
-      - "user1.test.near"
-      - "user2.test.near" 
-      - "user3.test.near"
-      - "alice.test.near"
-      - "bob.test.near"
+      - "posma-badge.testnet"  # Use receiver we know works!
     
     amount:
       - "1000000000000000000000000"   # 1 token
@@ -52,12 +45,10 @@ scenarios:
             receiverId: "{{ receiverId }}"
             amount: "{{ amount }}"
             memo: "Artillery load test - {{ $timestamp }}"
-          capture:
-            - json: "$.transactionHash"
-              as: "txHash"
           expect:
             - statusCode: 200
-            - hasProperty: "transactionHash"
+            - json:
+                success: true
 
   - name: "Health Check"
     weight: 10
@@ -84,3 +75,5 @@ scenarios:
                 memo: "Batch test 2"
           expect:
             - statusCode: 200
+            - json:
+                success: true
