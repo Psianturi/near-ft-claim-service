@@ -20,6 +20,7 @@ Environment: GitHub-hosted Ubuntu runners (Node.js 20). No blockchain access req
 
 - Developers run `npm run typecheck && npm run security && npm run test:frontend` locally to match CI.
 - Integration pipelines (`npm run test:sandbox`, `npm run test:testnet`) remain available locally for deeper checks outside the standard CI loop. CI already covers the sandbox path on every push.
+- The dedicated **Sandbox Benchmark** GitHub Action reuses `testing/test-complete-pipeline.sh` with `ARTILLERY_PROFILE=benchmark-sandbox.yml`, `WAIT_UNTIL=Included`, and `SANDBOX_MAX_IN_FLIGHT_PER_KEY=6`. It also verifies `/metrics` after the load test to ensure jobs actually reach the `submitted` state. Run the same script locally to reproduce benchmark behaviour.
 
 ## Secrets required
 

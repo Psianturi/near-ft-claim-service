@@ -35,14 +35,23 @@ const pendingResolutions = new Map<
   }
 >();
 
-const WAIT_UNTIL =
-  (process.env.WAIT_UNTIL as
+const WAIT_UNTIL = (() => {
+  const explicit = process.env.WAIT_UNTIL as
     | 'None'
     | 'Included'
     | 'ExecutedOptimistic'
     | 'IncludedFinal'
     | 'Executed'
-    | 'Final') || 'Final';
+    | 'Final'
+    | undefined;
+  if (explicit) {
+    return explicit;
+  }
+  if (config.networkId === 'sandbox') {
+    return 'Included';
+  }
+  return 'Final';
+})();
 const NONCE_RETRY_LIMIT = parseInt(process.env.NONCE_RETRY_LIMIT || '3', 10);
 const SKIP_STORAGE_CHECK = (process.env.SKIP_STORAGE_CHECK || '').toLowerCase() === 'true';
 const STORAGE_MIN_DEPOSIT = process.env.STORAGE_MIN_DEPOSIT || '1250000000000000000000';

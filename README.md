@@ -17,7 +17,7 @@ A high-performance TypeScript/Express service for distributing NEP-141 tokens on
 
 ## Overview
 
-This service is designed to meet [NEAR bounty requirements](https://github.com/near/bounties) for high-throughput token distribution:
+This service is designed to meet NEAR community performance targets for high-throughput token distribution:
 
 - **REST API** – `/send-ft` endpoint handles single or batched NEP-141 transfers
 - **Key Pool Management** – Rotates through multiple access keys to avoid nonce conflicts
@@ -275,12 +275,16 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 
 ### 🎯 100+ TPS Benchmark (10 Minutes)
 
-**The official benchmark for bounty validation:**
+**Primary benchmark target (10-minute 100 TPS run):**
 
 ```bash
 # Step 1: Setup (one-time)
 cp .env.example .env
-# Edit .env: Add 5+ keys, set SKIP_STORAGE_CHECK=true
+# Edit .env: Add 5+ keys, set SKIP_STORAGE_CHECK=true, WAIT_UNTIL=Included
+# Sandbox defaults for fast confirmations & concurrency
+export WAIT_UNTIL=Included
+export SANDBOX_MAX_IN_FLIGHT_PER_KEY=6
+export MAX_IN_FLIGHT_PER_KEY=6
 
 # Step 2: Start services
 # Terminal 1
@@ -297,6 +301,7 @@ NEAR_ENV=sandbox npm run run:worker:sandbox
 node ci/bootstrap-sandbox-accounts.mjs
 
 # Step 4: Run 10-minute benchmark (60,000+ transfers)
+ARTILLERY_PROFILE=benchmark-sandbox.yml \
 npx artillery run testing/artillery/benchmark-sandbox.yml \
   --output test-results/benchmark-10min-$(date +%Y%m%d-%H%M%S).json
 ```
@@ -312,6 +317,8 @@ P99 Latency:      <10s
 ```
 
 📚 **Detailed guide**: [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)
+
+🔍 **Metrics sanity check:** After the run, hit `http://127.0.0.1:3000/metrics` to ensure the `submitted` counter is >0 and monitor retry/failed counts. The benchmark CI pipeline now fails automatically when no jobs reach `submitted`.
 
 ### CI/CD Integration
 
