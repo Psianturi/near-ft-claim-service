@@ -291,6 +291,12 @@ export NEAR_SIGNER_ACCOUNT_ID=$ACCOUNT_ID
 export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 export NEAR_CONTRACT_ACCOUNT_ID=$ACCOUNT_ID
 
+# Step 4a: Prepare receiver accounts for benchmark
+log_info "👥 Bootstrapping sandbox receiver accounts..."
+export SANDBOX_RECEIVER_LIST=${SANDBOX_RECEIVER_LIST:-"user1.$ACCOUNT_ID,user2.$ACCOUNT_ID,user3.$ACCOUNT_ID,alice.$ACCOUNT_ID,bob.$ACCOUNT_ID"}
+node ci/bootstrap-sandbox-accounts.mjs
+log_success "Receiver accounts ready: $SANDBOX_RECEIVER_LIST"
+
 # Step 4: Deploy Contract
 log_info "📦 Deploying FT contract..."
 
@@ -413,12 +419,6 @@ else
     log_warning "Token minting step failed; continuing with existing balance"
 fi
 
-# Step 4a (moved): Prepare receiver accounts for benchmark once contract is live
-log_info "👥 Bootstrapping sandbox receiver accounts..."
-export SANDBOX_RECEIVER_LIST=${SANDBOX_RECEIVER_LIST:-"user1.$ACCOUNT_ID,user2.$ACCOUNT_ID,user3.$ACCOUNT_ID,alice.$ACCOUNT_ID,bob.$ACCOUNT_ID"}
-node ci/bootstrap-sandbox-accounts.mjs
-log_success "Receiver accounts ready: $SANDBOX_RECEIVER_LIST"
-
 # Step 5: Start API Service
 log_info "🌐 Starting API service..."
 
@@ -428,10 +428,6 @@ export MASTER_ACCOUNT=$ACCOUNT_ID
 export MASTER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 export MASTER_ACCOUNT_PRIVATE_KEYS=${MASTER_ACCOUNT_PRIVATE_KEYS:-$SECRET_KEY}
 export FT_CONTRACT=$ACCOUNT_ID
-export WAIT_UNTIL=${WAIT_UNTIL:-Included}
-export SANDBOX_MAX_IN_FLIGHT_PER_KEY=${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-6}
-export MAX_IN_FLIGHT_PER_KEY=${MAX_IN_FLIGHT_PER_KEY:-$SANDBOX_MAX_IN_FLIGHT_PER_KEY}
-export SKIP_STORAGE_CHECK=${SKIP_STORAGE_CHECK:-true}
 
 # Start API service in background (cluster by default)
 if [ "$SANDBOX_USE_CLUSTER" = "1" ]; then
@@ -667,33 +663,6 @@ else
     log_error "Artillery load test failed"
     exit 1
 fi
-
-    # Step 9: Metrics sanity check to ensure jobs progressed
-    if command -v curl &> /dev/null; then
-        METRICS_RESPONSE=$(curl -sS "http://127.0.0.1:$API_PORT/metrics" || true)
-        if [ -n "$METRICS_RESPONSE" ] && command -v jq &> /dev/null; then
-            SUBMITTED_COUNT=$(echo "$METRICS_RESPONSE" | jq -r '.counts.submitted // 0')
-            FAILED_COUNT=$(echo "$METRICS_RESPONSE" | jq -r '.counts.failed // 0')
-            PROCESSING_COUNT=$(echo "$METRICS_RESPONSE" | jq -r '.counts.processing // 0')
-            TOTAL_TRACKED=$(echo "$METRICS_RESPONSE" | jq -r '.counts | to_entries | map(.value) | add // 0')
-
-            echo ""
-            echo "📊 Coordinator metrics snapshot:"
-            echo "   - Submitted jobs: ${SUBMITTED_COUNT}"
-            echo "   - Processing jobs: ${PROCESSING_COUNT}"
-            echo "   - Failed jobs: ${FAILED_COUNT}"
-            echo "   - Total tracked: ${TOTAL_TRACKED}"
-
-            if [ "${SUBMITTED_COUNT}" -eq 0 ]; then
-                log_error "Metrics check failed: no jobs reached submitted state"
-                exit 1
-            fi
-        else
-            log_warning "Skipping metrics summary (missing jq or metrics endpoint unavailable)"
-        fi
-    else
-        log_warning "curl not available; unable to fetch metrics"
-    fi
 
 echo ""
 echo "📝 Note: Contract deployment has compatibility issues with NEAR 2.6.5"

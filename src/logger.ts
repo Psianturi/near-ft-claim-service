@@ -1,4 +1,11 @@
-import pino, { type Bindings, type LoggerOptions } from 'pino';
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import pino, {
+  type Bindings,
+  type DestinationStream,
+  type LoggerOptions,
+  destination as createDestination,
+} from 'pino';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const defaultLevel = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
@@ -26,7 +33,31 @@ if (transport) {
   (baseConfig as LoggerOptions).transport = transport;
 }
 
-export const logger = pino(baseConfig);
+const resolveDestination = (): DestinationStream | undefined => {
+  const destinationPath = process.env.PINO_DESTINATION ?? process.env.PINO_LOG_PATH;
+  if (!destinationPath) {
+    return undefined;
+  }
+
+  const resolvedPath = resolve(destinationPath);
+  mkdirSync(dirname(resolvedPath), { recursive: true });
+
+  const syncEnv = process.env.PINO_SYNC?.toLowerCase();
+  const sync = syncEnv === undefined || syncEnv === 'true' || syncEnv === '1';
+
+  const minLengthEnv = process.env.PINO_MIN_LENGTH;
+  const minLength = minLengthEnv ? Number.parseInt(minLengthEnv, 10) : undefined;
+
+  return createDestination({
+    dest: resolvedPath,
+    sync,
+    ...(Number.isFinite(minLength) ? { minLength } : {}),
+  });
+};
+
+const destination = resolveDestination();
+
+export const logger = destination ? pino(baseConfig, destination) : pino(baseConfig);
 
 export const createLogger = (bindings?: Bindings) =>
   bindings ? logger.child(bindings) : logger;

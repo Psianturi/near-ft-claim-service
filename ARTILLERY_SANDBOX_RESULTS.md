@@ -1,5 +1,45 @@
 # NEAR FT Claiming Service – Sandbox Performance Results
 
+## Planned Benchmark (post logging fix)
+- **Target date**: _TBD_
+- **Command**: `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh` (smoke validation) followed by `SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh`
+- **Service Preparation**: `node scripts/prepare-benchmark.mjs --env sandbox`
+- **Success Criteria**:
+  - No occurrences of `_flushSync took too long` in `service.log`
+  - `errors.ETIMEDOUT` reduced by ≥90% versus 2025-09-29 run
+  - ≥95% scenario completion on 10-minute benchmark (100 TPS)
+- **Artifacts to capture**: JSON + HTML reports under `testing/artillery/`, summarized metrics added below once run completes.
+
+## Smoke Validation (2025-10-09)
+- **Command**: `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh`
+- **Artifacts**: [`testing/artillery/artillery-results-sandbox-20251009-133510.json`](testing/artillery/artillery-results-sandbox-20251009-133510.json)
+- **Service Prep**:
+  - Credentials exported from `~/.near-credentials/sandbox/service.test.near.json`
+  - `node scripts/prepare-benchmark.mjs --env sandbox`
+  - `MASTER_ACCOUNT_PRIVATE_KEYS` set to single helper key
+  - Logging directed to synchronous file using `PINO_DESTINATION` (no `_flushSync` warnings observed)
+
+### Key Metrics
+| Metric | Value |
+| --- | --- |
+| Total requests | **3,025** |
+| Successful responses (HTTP 200) | **121** |
+| Failed responses (HTTP 500) | **257** |
+| Scenarios completed | **378** (12.5%) |
+| Errors – `ETIMEDOUT` | **2,018** |
+| Errors – `ECONNRESET` | **629** |
+| Median latency | **12.7 s** |
+| 95th percentile latency | **24.1 s** |
+| Max latency | **36.4 s** |
+| Mean request rate | **24 req/s** |
+
+### Observations
+- Logging pipeline stayed healthy—no `_flushSync took too long` events in rotated logs.
+- Majority of timeouts occurred under `/send-ft`; health checks mostly succeeded (121 × 200).
+- Single signer key (from helper) limits throughput; nonce retries spiked once Artillery ramped beyond ~25 rps.
+- Sandbox node emitted kernel tuning warnings (`net.core.rmem_max`, `tcp_rmem` etc.) but remained up; apply `scripts/set_kernel_params.sh` before long-duration runs.
+- Artillery 2.x installation threw `EBADENGINE` warnings because Node 18.19.1 is below the required ≥22.13. Upgrade Node before the 10-minute benchmark to avoid incompatibilities.
+
 ## Latest Benchmark (2025-09-29)
 - **Command**: `./testing/artillery/run-artillery-test.sh sandbox`
 - **Configuration**: [`testing/artillery/benchmark-sandbox.yml`](testing/artillery/benchmark-sandbox.yml)

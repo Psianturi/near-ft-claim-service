@@ -154,7 +154,7 @@ npx playwright install --with-deps
    
    # Performance optimizations
    SKIP_STORAGE_CHECK=true            # Pre-register receivers
-   WAIT_UNTIL=Included                # Fastest finality
+   WAIT_UNTIL=Included                # Fastest finality (WAIT_UNTIL=None is no longer supported)
    CONCURRENCY_LIMIT=600              # High concurrency
    ```
 
@@ -175,6 +175,15 @@ done
 # Sandbox (via near-ft-helper)
 node near-ft-helper/deploy.js  # Auto-generates keys
 ```
+
+### Logging
+
+- `LOG_LEVEL` controls verbosity (`warn` is recommended for high-throughput runs).
+- Set `PINO_DESTINATION=/path/to/service.log` (or the legacy `PINO_LOG_PATH`) to stream logs to a file. Run `node scripts/prepare-benchmark.mjs` to rotate old logs and emit the relevant `export` commands.
+- File destinations default to **synchronous writes** so benchmarks no longer trip `_flushSync took too long` errors from `thread-stream`.
+- Override the behavior with `PINO_SYNC=false` only if you have fast storage and want buffered writes. Tune the buffer with `PINO_MIN_LENGTH=<bytes>` when running async.
+
+> Tip: Place log files on tmpfs or NVMe when running sustained load tests to avoid I/O stalls.
 
 ### Storage Registration
 
@@ -272,6 +281,7 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 | `npm run benchmark` | Quick local throughput test |
 | `./testing/artillery/run-artillery-test.sh sandbox` | **10-minute sustained 100 TPS test** |
 | `./testing/artillery/run-artillery-test.sh testnet` | Testnet load verification |
+| `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh` | 90-second smoke with auto sandbox + Artillery |
 
 ### 🎯 100+ TPS Benchmark (10 Minutes)
 
@@ -285,6 +295,8 @@ cp .env.example .env
 export WAIT_UNTIL=Included
 export SANDBOX_MAX_IN_FLIGHT_PER_KEY=6
 export MAX_IN_FLIGHT_PER_KEY=6
+
+# Artillery ≥2.0 requires Node 22.13+. `nvm use 22` (or newer) before running the pipeline to avoid EBADENGINE warnings.
 
 # Step 2: Start services
 # Terminal 1
@@ -407,7 +419,7 @@ Ensure the recipient has registered storage (`storage_deposit`) before minting t
 - ✅ Check nonce conflicts in logs
 
 **Timeouts (>20%)**
-- ✅ Use `WAIT_UNTIL=Included` (fastest)
+- ✅ Use `WAIT_UNTIL=Included` (fastest; `WAIT_UNTIL=None` will be overridden to `Included`)
 - ✅ Increase timeouts: `SERVER_TIMEOUT_MS=180000`
 - ✅ For sandbox: Ensure sufficient system resources
 

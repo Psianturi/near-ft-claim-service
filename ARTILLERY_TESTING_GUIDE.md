@@ -106,4 +106,46 @@ Notes:
 - Use staggered phases (e.g., multiple shorter sustained segments) to observe when bottlenecks appear.
 - Capture before/after metrics in `test-results/` so trends are easy to compare.
 
+## 8. Rerun checklist (post logging fix)
+
+1. **Clean up stale processes and logs**
+   - Stop any lingering `start:<env>` and `run:worker:<env>` processes.
+   - Rotate or archive `service.log`, `worker.log`, and `api.log` so the new run starts with fresh files (the helper `node scripts/prepare-benchmark.mjs --env sandbox` takes care of this automatically).
+2. **Set environment overrides**
+   - Ensure `LOG_LEVEL=warn` (or lower verbosity) to minimize write volume. The helper prints ready-to-eval `export` commands.
+   - Point logs to fast storage: `export PINO_DESTINATION=./service.log` (defaults to synchronous writes).
+   - Leave `PINO_SYNC=true` unless you have profiled the filesystem under load; optionally raise `PINO_MIN_LENGTH` only when running async.
+3. **Restart API + worker**
+   - `NEAR_ENV=sandbox npm run start:sandbox`
+   - `NEAR_ENV=sandbox npm run run:worker:sandbox`
+4. **Verify health before load**
+   - Hit `/health` and `/metrics` to confirm both processes are live and `maxInFlight` matches expectations.
+5. **Execute the chosen scenario**
+   - For a smoke validation: `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh`.
+   - For the 10-minute benchmark: `SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh`.
+6. **Monitor during run**
+   - Tail `service.log` for unexpected `warn`/`error` entries; absence of `_flushSync took too long` confirms the fix.
+   - Watch `worker.log` for nonce retries or RPC errors.
+7. **Collect and compare metrics**
+   - Parse Artillery output with `jq '.aggregate' <result>.json`.
+   - Note success rate, `errors.ETIMEDOUT`, and latency p95/p99; confirm improvements relative to pre-fix runs.
+   - Capture highlights in `ARTILLERY_SANDBOX_RESULTS.md` for historical tracking.
+
+## 9. Mitigation playbook
+
+When smoke results still show heavy `ETIMEDOUT`/`ECONNRESET`, walk through these levers before re-running the long benchmark:
+
+1. **Runtime prerequisites**
+   - Upgrade to Node ≥22.13 so Artillery 2.x and `near-workspaces@5` no longer emit `EBADENGINE` warnings.
+   - Apply sandbox kernel tuning by running `sudo ./node_modules/.bin/near-sandbox scripts/set_kernel_params.sh` (or copy the sysctl values manually) to unlock higher socket buffers.
+2. **Key pool & concurrency**
+   - Ensure `MASTER_ACCOUNT_PRIVATE_KEYS` lists ≥5 sandbox keys. Use the helper (`near-ft-helper/deploy.js`) or `ci/bootstrap-sandbox-accounts.mjs` to mint extras, then export them before launching the worker.
+   - Align `WORKER_COUNT` with the key count; drop `MAX_TX_PER_KEY_PER_SECOND` if retries spike.
+3. **Arrival shaping**
+   - Adjust `benchmark-sandbox-smoke.yml` arrival rates (reduce peak to 20–25 rps) until success rate clears 80%, then ramp up gradually.
+   - Increase `BATCH_WINDOW_MS` or lower `MAX_BATCH_SIZE` temporarily to shrink batch signing pressure.
+4. **Observability checks**
+   - Tail `service.log` and `worker.log` for `InvalidNonce` and retry bursts; inspect `sandbox.log` for RPC stalls.
+   - If timeouts persist, switch `/send-ft` validation to a warm-up phase (lower arrival) before sustained load.
+
 That’s all—run the script, read the JSON, adjust, repeat. Reach out to the benchmark table in the main `README.md` for the latest headline numbers and mitigation ideas.
