@@ -2,6 +2,7 @@ import { config } from './config.js';
 import fs from 'fs';
 import path from 'path';
 import { createLogger } from './logger.js';
+import { providers } from 'near-api-js';
 
 const log = createLogger({ module: 'near' });
 
@@ -37,6 +38,7 @@ class NearConnectionManager {
   private eclipseeerSignerActive: number[] = [];
   private eclipseeerSignerCursor = 0;
   private eclipseeerMaxPerKey = 1;
+  private legacyProvider: providers.JsonRpcProvider | null = null;
 
   private constructor() {}
 
@@ -297,6 +299,16 @@ class NearConnectionManager {
 
     this.eclipseeerClient = createClient({ network });
 
+    if (config.networkId === 'sandbox' && config.nodeUrl) {
+      try {
+        this.legacyProvider = new providers.JsonRpcProvider({ url: config.nodeUrl });
+        log.debug({ nodeUrl: config.nodeUrl }, 'Initialized legacy RPC provider for sandbox fallback');
+      } catch (error: any) {
+        log.warn({ err: error }, 'Failed to initialize legacy RPC provider for sandbox fallback');
+        this.legacyProvider = null;
+      }
+    }
+
     log.debug({
       hasMasterAccountPrivateKey: !!process.env.MASTER_ACCOUNT_PRIVATE_KEY,
       hasMasterAccountPrivateKeys: !!process.env.MASTER_ACCOUNT_PRIVATE_KEYS,
@@ -513,11 +525,99 @@ class NearConnectionManager {
       throw new Error('Signer not initialized');
     }
     
+    const clientProxy = {
+      ...this.eclipseeerClient,
+      sendSignedTransaction: (args: any) => this.sendSignedTransactionWithFallback(args),
+    };
+
     return {
       signer: this.eclipseeerSigner,
-      client: this.eclipseeerClient,
+      client: clientProxy,
       acquireSigner: () => this.acquireSigner(),
     };
+  }
+
+  private async sendSignedTransactionWithFallback(args: any): Promise<any> {
+    try {
+      return await this.eclipseeerClient.sendSignedTransaction(args);
+    } catch (error: any) {
+      if (this.shouldFallbackToLegacy(error)) {
+        log.warn({ err: error }, 'Falling back to legacy broadcast_tx_commit due to client parse error');
+        return await this.sendViaLegacyProvider(args?.signedTransaction);
+      }
+      throw error;
+    }
+  }
+
+  private shouldFallbackToLegacy(error: any): boolean {
+    if (!this.legacyProvider) {
+      return false;
+    }
+
+    if (config.networkId !== 'sandbox') {
+      return false;
+    }
+
+    const name = error?.name || error?.constructor?.name;
+    if (name === '$ZodError') {
+      return true;
+    }
+
+    const message = String(error?.message || '').toLowerCase();
+    return message.includes('invalid input') && message.includes('receipts');
+  }
+
+  private async sendViaLegacyProvider(signedTransaction: any): Promise<any> {
+    if (!this.legacyProvider) {
+      throw new Error('Legacy provider not initialized');
+    }
+
+    const resolveBytes = (tx: any): Uint8Array | null => {
+      if (!tx) return null;
+      if (typeof tx.encode === 'function') {
+        return tx.encode();
+      }
+      if (typeof tx.serialize === 'function') {
+        return tx.serialize();
+      }
+      if (tx.signedTransaction && typeof tx.signedTransaction.encode === 'function') {
+        return tx.signedTransaction.encode();
+      }
+      if (tx.signedTransaction && typeof tx.signedTransaction.serialize === 'function') {
+        return tx.signedTransaction.serialize();
+      }
+      if (tx.signedTxBytes instanceof Uint8Array) {
+        return tx.signedTxBytes;
+      }
+      if (tx.serializedTx instanceof Uint8Array) {
+        return tx.serializedTx;
+      }
+      if (tx instanceof Uint8Array) {
+        return tx;
+      }
+      if (Array.isArray(tx)) {
+        return Uint8Array.from(tx);
+      }
+      return null;
+    };
+
+    const bytes = resolveBytes(signedTransaction);
+    if (!bytes) {
+      log.error({ keys: signedTransaction ? Object.keys(signedTransaction) : null }, 'Unable to resolve signed transaction bytes for legacy fallback');
+      throw new Error('Signed transaction missing serialisable payload for legacy fallback');
+    }
+
+    const base64Tx = Buffer.from(bytes).toString('base64');
+    const result: any = await this.legacyProvider.sendJsonRpc('broadcast_tx_commit', [base64Tx]);
+
+    const normalized = {
+      ...result,
+      finalExecutionStatus: result?.status,
+      transactionOutcome: result?.transaction_outcome,
+      receiptsOutcome: result?.receipts_outcome,
+    };
+
+    return normalized;
   }
 
   private async acquireSigner(): Promise<{

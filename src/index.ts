@@ -7,6 +7,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import https from 'https';
 import http from 'http';
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { initNear, cleanupNear } from './near.js';
 import { startReconciler } from './reconciler.js';
 import { config } from './config.js';
@@ -20,6 +21,75 @@ const metricsLog = log.child({ component: 'metrics' });
 const requestLog = log.child({ component: 'transfer' });
 const throttleConfig = getThrottleConfig();
 log.info({ throttleConfig }, 'API throttle configuration loaded');
+
+const metricsRegistry = new Registry();
+collectDefaultMetrics({ register: metricsRegistry, prefix: 'ft_service_' });
+
+const httpRequestCounter = new Counter({
+  name: 'ft_service_http_requests_total',
+  help: 'Total number of HTTP requests handled by the FT service',
+  labelNames: ['method', 'route', 'status_code'],
+  registers: [metricsRegistry],
+});
+
+const httpRequestDuration = new Histogram({
+  name: 'ft_service_http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+  registers: [metricsRegistry],
+});
+
+const jobStatusGauge = new Gauge({
+  name: 'ft_service_job_status_total',
+  help: 'Number of jobs per status recorded in persistence',
+  labelNames: ['status'],
+  registers: [metricsRegistry],
+});
+
+const activeQueueGauge = new Gauge({
+  name: 'ft_service_queue_active_jobs',
+  help: 'Current number of active jobs being processed by the server',
+  registers: [metricsRegistry],
+});
+
+const queuedRequestGauge = new Gauge({
+  name: 'ft_service_queue_length',
+  help: 'Number of requests waiting in the concurrency queue',
+  registers: [metricsRegistry],
+});
+
+const rejectedRequestCounter = new Counter({
+  name: 'ft_service_queue_rejected_total',
+  help: 'Total number of requests rejected because the concurrency queue was full or timed out',
+  registers: [metricsRegistry],
+});
+
+const computeJobStatusCounts = (): Record<string, number> => {
+  const allJobs = persistence.listAllJobs();
+  return allJobs.reduce((acc: Record<string, number>, job) => {
+    acc[job.status] = (acc[job.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+};
+
+const updateJobStatusGauge = (counts: Record<string, number>) => {
+  jobStatusGauge.reset();
+  Object.entries(counts).forEach(([status, count]) => {
+    jobStatusGauge.set({ status }, count);
+  });
+};
+
+const refreshJobStatusMetrics = (): Record<string, number> | null => {
+  try {
+    const counts = computeJobStatusCounts();
+    updateJobStatusGauge(counts);
+    return counts;
+  } catch (err) {
+    metricsLog.warn({ err }, 'Failed to refresh job status metrics');
+    return null;
+  }
+};
 
 process.on('uncaughtException', (err: any, origin: any) => {
   log.fatal({ err, origin }, 'Uncaught exception, terminating process');
@@ -54,6 +124,25 @@ app.use(cors(corsOptions));
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use((req, res, next) => {
+  const method = req.method.toUpperCase();
+  const endTimer = httpRequestDuration.startTimer();
+
+  res.on('finish', () => {
+    const route = req.route?.path || req.baseUrl || req.path || 'unmatched';
+    const labels = {
+      method,
+      route,
+      status_code: String(res.statusCode),
+    };
+
+    httpRequestCounter.inc(labels);
+    endTimer(labels);
+  });
+
+  next();
+});
 
 // Configure server for high performance
 const host = process.env.HOST || '0.0.0.0';
@@ -127,6 +216,7 @@ class ConcurrencyManager {
 
     if (this.queue.length >= QUEUE_SIZE) {
       this.stats.rejected++;
+      rejectedRequestCounter.inc();
       throw new Error(`Queue full (${QUEUE_SIZE}), rejecting request`);
     }
 
@@ -136,6 +226,7 @@ class ConcurrencyManager {
         if (index > -1) {
           this.queue.splice(index, 1);
           this.stats.rejected++;
+          rejectedRequestCounter.inc();
           reject(new Error('Request timeout in queue'));
         }
       }, 30000); // 30 second queue timeout
@@ -186,6 +277,7 @@ const concurrencyManager = new ConcurrencyManager();
 
 // Initialize workers for parallel processing
 concurrencyManager.initializeWorkers();
+refreshJobStatusMetrics();
 
 // Enhanced logging with TPS calculation
 let requestCount = 0;
@@ -202,6 +294,11 @@ setInterval(() => {
     currentTps,
     windowSeconds: Number(timeDiff.toFixed(2)),
   }, 'Throughput update');
+
+  const stats = concurrencyManager.getStats();
+  activeQueueGauge.set(stats.active);
+  queuedRequestGauge.set(stats.queueLength);
+  refreshJobStatusMetrics();
 
   requestCount = 0;
   lastTpsCheck = now;
@@ -222,7 +319,6 @@ if (process.env.ENABLE_MEMORY_MONITORING === 'true') {
     }
   }, 30000);
 }
-
 // Graceful shutdown handling
 const gracefulShutdown = async (signal: string) => {
   log.warn({ signal }, 'Received shutdown signal, shutting down gracefully');
@@ -314,20 +410,27 @@ app.get('/transfer/:jobId', (req: Request, res: Response) => {
   return res.send({ success: true, job });
 });
 
-// Lightweight metrics for monitoring
-app.get('/metrics', (req: Request, res: Response) => {
-  const all = persistence.listAllJobs();
-  const counts = all.reduce((acc: any, j: any) => {
-    acc[j.status] = (acc[j.status] || 0) + 1;
-    return acc;
-  }, {});
-  const uptimeMs = Date.now() - process.uptime() * 1000;
-  return res.send({
+app.get('/metrics/jobs', (req: Request, res: Response) => {
+  const counts = refreshJobStatusMetrics() ?? {};
+  const uptimeMs = Math.round(process.uptime() * 1000);
+
+  res.send({
     success: true,
     counts,
     uptimeMs,
     timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/metrics', async (req: Request, res: Response) => {
+  try {
+    refreshJobStatusMetrics();
+    res.set('Content-Type', metricsRegistry.contentType);
+    res.send(await metricsRegistry.metrics());
+  } catch (err) {
+    metricsLog.error({ err }, 'Failed to collect Prometheus metrics');
+    res.status(500).send('Failed to collect metrics');
+  }
 });
 
 app.post('/send-ft', async (req: Request, res: Response) => {
@@ -406,7 +509,6 @@ app.post('/send-ft', async (req: Request, res: Response) => {
         memo: transfer.memo,
       })),
     );
-
     const transactionHash = results[0]?.transactionHash || 'unknown';
     const batchId = results[0]?.batchId;
     const jobIds = results.map((result) => result.jobId);

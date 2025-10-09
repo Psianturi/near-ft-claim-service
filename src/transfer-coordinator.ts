@@ -52,12 +52,12 @@ const WAIT_UNTIL = (() => {
     return 'Included';
   }
 
-  if (raw) {
+  if ((raw as string | undefined)?.length) {
     return raw;
   }
 
   if (config.networkId === 'sandbox') {
-    return 'Included';
+    return 'Final';
   }
 
   return 'Final';

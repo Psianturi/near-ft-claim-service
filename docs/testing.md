@@ -67,7 +67,7 @@ npm run typecheck && npm run security && npm run test:frontend
 
 - The sandbox benchmark pipeline (`testing/test-complete-pipeline.sh`) now defaults to `WAIT_UNTIL=Included` for fast confirmations and sets `SANDBOX_MAX_IN_FLIGHT_PER_KEY=6` to keep multiple transactions flying per access key. `WAIT_UNTIL=None` is not supported by the NEAR client shim and will be coerced back to `Included`.
 - GitHub Actions passes `ARTILLERY_PROFILE=benchmark-sandbox.yml` so CI exercises the same 10-minute, 100 TPS scenario documented in the README instead of the aggressive local smoke profile.
-- After each Artillery run, the script queries `/metrics` and fails the job if no transfers reach the `submitted` state, catching regressions where the coordinator stalls or all requests time out.
+- After each Artillery run, the script queries `/metrics/jobs` and fails the job if no transfers reach the `submitted` state, catching regressions where the coordinator stalls or all requests time out.
 - Local developers can mimic CI by exporting the same environment variables before launching the API/worker or running `testing/test-complete-pipeline.sh`.
 
 With this structure we balance quick safety nets (type checking & Playwright) against deeper blockchain validation that still relies on existing integration scripts.

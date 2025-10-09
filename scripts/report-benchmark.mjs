@@ -126,6 +126,23 @@ const failureMessage = '⚠️ Benchmark did not meet success threshold';
 summaryLines.push('');
 summaryLines.push(health ? successMessage : failureMessage);
 
+const guardWarnings = [];
+if (successRate < 10) {
+  guardWarnings.push(`• Success rate ${successRate.toFixed(2)}% is below the 10% threshold`);
+}
+
+const p95Latency = Number(latencySummary.p95 ?? 0);
+if (p95Latency > 20000) {
+  guardWarnings.push(`• p95 latency ${formatNumber(p95Latency)} ms exceeds the 20,000 ms limit`);
+}
+
+if (guardWarnings.length > 0) {
+  summaryLines.push('');
+  summaryLines.push('### ⚠️ Guard checks');
+  summaryLines.push('');
+  summaryLines.push(...guardWarnings.map((item) => `- ${item}`));
+}
+
 const summary = summaryLines.join('\n');
 
 console.log(summary);

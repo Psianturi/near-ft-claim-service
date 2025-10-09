@@ -121,7 +121,7 @@ Notes:
    - `NEAR_ENV=sandbox npm run start:sandbox`
    - `NEAR_ENV=sandbox npm run run:worker:sandbox`
 4. **Verify health before load**
-   - Hit `/health` and `/metrics` to confirm both processes are live and `maxInFlight` matches expectations.
+   - Hit `/health` for liveness and `/metrics/jobs` for queued/submitted counts. Optional: scrape `/metrics` to ensure Prometheus exporters are online and `maxInFlight` matches expectations.
 5. **Execute the chosen scenario**
    - For a smoke validation: `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh`.
    - For the 10-minute benchmark: `SANDBOX_BENCHMARK_10M=1 ./testing/test-complete-pipeline.sh`.

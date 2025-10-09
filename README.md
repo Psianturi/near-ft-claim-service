@@ -256,7 +256,8 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
    ```
 5. **Monitor health.**
    - `/health` — liveness check
-   - `/metrics` — aggregate job counts (queued, processing, submitted, failed)
+   - `/metrics` — Prometheus metrics (HTTP totals, latency histogram, queue gauges)
+   - `/metrics/jobs` — JSON job counts (queued, processing, submitted, failed)
    - `/transfer/:jobId` — full lifecycle of an individual transfer
 6. **Scale horizontally (optional).** When running multiple API instances, back the JSONL persistence with a shared volume or object storage so all coordinators see the same jobs.
 
@@ -330,7 +331,7 @@ P99 Latency:      <10s
 
 📚 **Detailed guide**: [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)
 
-🔍 **Metrics sanity check:** After the run, hit `http://127.0.0.1:3000/metrics` to ensure the `submitted` counter is >0 and monitor retry/failed counts. The benchmark CI pipeline now fails automatically when no jobs reach `submitted`.
+🔍 **Metrics sanity check:** After the run, hit `http://127.0.0.1:3000/metrics/jobs` to confirm the `submitted` counter is >0. For dashboards, scrape `http://127.0.0.1:3000/metrics` (Prometheus format) to visualise success/error trends. The benchmark CI pipeline now fails automatically when no jobs reach `submitted`.
 
 ### CI/CD Integration
 
