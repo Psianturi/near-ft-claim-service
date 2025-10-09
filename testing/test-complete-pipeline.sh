@@ -368,8 +368,8 @@ if node deploy-local.mjs; then
         CONTRACT_DEPLOYED=1
         CONTRACT_READY=1
         log_success "Contract initialization verified"
-        log_info "⏳ Waiting 5 seconds to ensure sandbox RPC indexes contract code..."
-        sleep 5
+    log_info "⏳ Waiting 8 seconds to ensure sandbox RPC indexes contract code..."
+    sleep 8
     else
         log_warning "Contract readiness check failed; sandbox RPC may still be syncing"
     fi

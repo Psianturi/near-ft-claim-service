@@ -20,8 +20,8 @@ async function waitForContract() {
   const signerAccountId = process.env.NEAR_SIGNER_ACCOUNT_ID;
   const signerPrivateKey = process.env.NEAR_SIGNER_ACCOUNT_PRIVATE_KEY;
   const nodeUrl = process.env.NEAR_NODE_URL || 'http://127.0.0.1:3030';
-  const attempts = parseInt(process.env.CONTRACT_READY_ATTEMPTS || '20', 10);
-  const intervalMs = parseInt(process.env.CONTRACT_READY_INTERVAL_MS || '1500', 10);
+  const attempts = parseInt(process.env.CONTRACT_READY_ATTEMPTS || '60', 10);
+  const intervalMs = parseInt(process.env.CONTRACT_READY_INTERVAL_MS || '2500', 10);
 
   if (!contractId) {
     throw new Error('NEAR_CONTRACT_ACCOUNT_ID is required');
@@ -44,10 +44,20 @@ async function waitForContract() {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-  const metadata = await account.viewFunction(contractId, 'ft_metadata', {});
-  const totalSupply = await account.viewFunction(contractId, 'ft_total_supply', {});
+      const metadata = await account.viewFunction({
+        contractId,
+        methodName: 'ft_metadata',
+        args: {},
+      });
+      const totalSupply = await account.viewFunction({
+        contractId,
+        methodName: 'ft_total_supply',
+        args: {},
+      });
       console.log('✅ Contract metadata available:', metadata?.symbol || 'unknown symbol');
       console.log('✅ Total supply reported:', totalSupply);
+      console.log('⏳ Extra 3s delay for sandbox indexing stability...');
+      await new Promise((resolve) => setTimeout(resolve, 2500));
       return;
     } catch (error) {
       const message = error?.message || String(error);

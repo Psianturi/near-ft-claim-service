@@ -39,7 +39,7 @@ jobs:
       - name: Run sandbox benchmark pipeline
         env:
           CI: 'true'
-          TEST_DURATION: '1200'
+          TEST_DURATION: '1100'
           MAX_TPS: '180'
           SANDBOX_HEADROOM_PERCENT: '85'
           SANDBOX_USE_CLUSTER: '1'
