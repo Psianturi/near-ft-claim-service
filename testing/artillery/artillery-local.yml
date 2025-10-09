@@ -8,18 +8,18 @@ config:
     # Extended warm-up so sandbox RPC can stabilise
     - duration: 60
       arrivalRate: 5
-      rampTo: 212
+      rampTo: 17
       name: "Extended Warm-up"
 
     # Gradual ramp towards the configured target TPS
     - duration: 120
-      arrivalRate: 212
-      rampTo: 425
+      arrivalRate: 17
+      rampTo: 34
       name: "Ramp to Target"
 
     # Sustained load at TARGET for validation
     - duration: 120
-      arrivalRate: 425
+      arrivalRate: 34
       name: "Sustained Load"
 
   variables:

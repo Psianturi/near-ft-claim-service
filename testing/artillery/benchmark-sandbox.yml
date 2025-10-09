@@ -18,7 +18,7 @@ config:
       name: "Ramp to Target (60-120s)"
 
     # SUSTAINED LOAD: 10 MINUTES @ 100 TPS (60,000 transfers)
-    # This is the critical test phase for the bounty requirement
+  # This is the critical test phase for the throughput requirement
     - duration: 600
       arrivalRate: 100
       name: "Sustained 100 TPS - 10 Minutes (120-720s)"

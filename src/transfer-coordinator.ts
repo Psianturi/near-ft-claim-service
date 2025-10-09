@@ -36,20 +36,30 @@ const pendingResolutions = new Map<
 >();
 
 const WAIT_UNTIL = (() => {
-  const explicit = process.env.WAIT_UNTIL as
+  const raw = (process.env.WAIT_UNTIL || '').trim() as
     | 'None'
     | 'Included'
     | 'ExecutedOptimistic'
     | 'IncludedFinal'
     | 'Executed'
     | 'Final'
-    | undefined;
-  if (explicit) {
-    return explicit;
+    | '';
+
+  if (raw === 'None') {
+    log.warn(
+      'WAIT_UNTIL=None is no longer supported by the NEAR client; defaulting to Included for reliable parsing.',
+    );
+    return 'Included';
   }
+
+  if (raw) {
+    return raw;
+  }
+
   if (config.networkId === 'sandbox') {
     return 'Included';
   }
+
   return 'Final';
 })();
 const NONCE_RETRY_LIMIT = parseInt(process.env.NONCE_RETRY_LIMIT || '3', 10);
@@ -239,8 +249,50 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
       }
     }
 
-    const storageDepositActions = SKIP_STORAGE_CHECK
-      ? uniqueReceivers.map((receiverId) =>
+    const registeredAccounts = new Set<string>(
+      Object.entries(storageChecks)
+        .filter(([, isRegistered]) => Boolean(isRegistered))
+        .map(([receiverId]) => receiverId),
+    );
+    const plannedDeposits = new Set<string>();
+    const maxActionsPerTx = Math.max(parseInt(process.env.MAX_ACTIONS_PER_TX || '10', 10), 2);
+
+    type Action = ReturnType<typeof functionCall>;
+    type Chunk = {
+      jobs: JobState[];
+      actions: Action[];
+      receiversRequiringDeposit: Set<string>;
+    };
+
+    const chunks: Chunk[] = [];
+    let currentChunk: Chunk = {
+      jobs: [],
+      actions: [],
+      receiversRequiringDeposit: new Set<string>(),
+    };
+
+    const flushChunk = () => {
+      if (currentChunk.actions.length === 0) {
+        return;
+      }
+      chunks.push(currentChunk);
+      currentChunk = {
+        jobs: [],
+        actions: [],
+        receiversRequiringDeposit: new Set<string>(),
+      };
+    };
+
+    for (const job of jobs) {
+      const receiverId = job.receiverId;
+      const jobActions: Action[] = [];
+      const needsDeposit =
+        SKIP_STORAGE_CHECK
+          ? !plannedDeposits.has(receiverId)
+          : !(registeredAccounts.has(receiverId) || plannedDeposits.has(receiverId));
+
+      if (needsDeposit) {
+        jobActions.push(
           functionCall({
             fnName: 'storage_deposit',
             fnArgsJson: {
@@ -250,79 +302,104 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
             gasLimit: teraGas('30'),
             attachedDeposit: { yoctoNear: storageDepositAmount },
           }),
-        )
-      : uniqueReceivers
-          .filter((receiverId) => !storageChecks[receiverId])
-          .map((receiverId) =>
-            functionCall({
-              fnName: 'storage_deposit',
-              fnArgsJson: {
-                account_id: receiverId,
-                registration_only: true,
-              },
-              gasLimit: teraGas('30'),
-              attachedDeposit: { yoctoNear: storageDepositAmount },
-            }),
-          );
+        );
+      }
 
-    const transferActions = jobs.map((job) =>
-      functionCall({
-        fnName: 'ft_transfer',
-        fnArgsJson: {
-          receiver_id: job.receiverId,
-          amount: job.amount,
-          memo: job.memo || '',
-        },
-        gasLimit: teraGas('30'),
-        attachedDeposit: { yoctoNear: '1' },
-      }),
-    );
+      jobActions.push(
+        functionCall({
+          fnName: 'ft_transfer',
+          fnArgsJson: {
+            receiver_id: job.receiverId,
+            amount: job.amount,
+            memo: job.memo || '',
+          },
+          gasLimit: teraGas('30'),
+          attachedDeposit: { yoctoNear: '1' },
+        }),
+      );
 
-    const actions = [...storageDepositActions, ...transferActions];
-    if (actions.length === 0) {
+      if (currentChunk.actions.length + jobActions.length > maxActionsPerTx) {
+        flushChunk();
+      }
+
+      if (jobActions.length > maxActionsPerTx) {
+        throw new Error(
+          `Job actions exceed per-transaction limit (actions=${jobActions.length}, limit=${maxActionsPerTx})`,
+        );
+      }
+
+      currentChunk.jobs.push(job);
+      currentChunk.actions.push(...jobActions);
+
+      if (needsDeposit) {
+        currentChunk.receiversRequiringDeposit.add(receiverId);
+        plannedDeposits.add(receiverId);
+      }
+    }
+
+    flushChunk();
+
+    if (chunks.length === 0) {
       throw new Error('No actions generated for batch');
     }
 
-    const result = await sendWithNonceRetry(async () => {
-      await throttleGlobal();
-      await throttleKey(keyIdentifier);
+    for (const [chunkIndex, chunk] of chunks.entries()) {
+      const chunkId =
+        chunks.length === 1 ? batchId : `${batchId}-part${chunkIndex + 1}`;
 
-      const tx = await signer.signTransaction({
-        receiverAccountId: config.ftContract,
-        actions,
-      });
+      try {
+        const result = await sendWithNonceRetry(async () => {
+          await throttleGlobal();
+          await throttleKey(keyIdentifier);
 
-      return client.sendSignedTransaction({
-        signedTransaction: tx,
-        waitUntil: WAIT_UNTIL,
-      });
-    });
+          const tx = await signer.signTransaction({
+            receiverAccountId: config.ftContract,
+            actions: chunk.actions,
+          });
 
-    const transactionHash =
-      result?.transaction?.hash || result?.transactionOutcome?.id || 'unknown';
+          return client.sendSignedTransaction({
+            signedTransaction: tx,
+            waitUntil: WAIT_UNTIL,
+          });
+        });
 
-    const failure = findFailureInOutcome(result);
-    if (failure) {
-      throw new Error(`On-chain failure: ${JSON.stringify(failure)}`);
-    }
+        const transactionHash =
+          result?.transaction?.hash || result?.transactionOutcome?.id || 'unknown';
 
-    for (const job of jobs) {
-      persistence.updateJob(job.id, {
-        status: 'submitted',
-        txHash: transactionHash,
-        batchId,
-      });
+        const failure = findFailureInOutcome(result);
+        if (failure) {
+          throw new Error(`On-chain failure: ${JSON.stringify(failure)}`);
+        }
 
-      resolveJob(job.id, {
-        jobId: job.id,
-        receiverId: job.receiverId,
-        amount: job.amount,
-        memo: job.memo,
-        transactionHash,
-        status: result?.finalExecutionStatus || 'submitted',
-        batchId,
-        submittedAt: nowIso,
-      });
+        for (const job of chunk.jobs) {
+          persistence.updateJob(job.id, {
+            status: 'submitted',
+            txHash: transactionHash,
+            batchId: chunkId,
+          });
+
+          resolveJob(job.id, {
+            jobId: job.id,
+            receiverId: job.receiverId,
+            amount: job.amount,
+            memo: job.memo,
+            transactionHash,
+            status: result?.finalExecutionStatus || 'submitted',
+            batchId: chunkId,
+            submittedAt: nowIso,
+          });
+        }
+
+        for (const receiverId of chunk.receiversRequiringDeposit) {
+          registeredAccounts.add(receiverId);
+        }
+      } catch (error) {
+        const message = extractErrorMessage(error);
+        log.error({ err: error, batchId: chunkId, message }, 'Failed to process chunk');
+        for (const job of chunk.jobs) {
+          handleJobFailure(job, chunkId, error, message);
+        }
+      }
     }
   } catch (error) {
     const message = extractErrorMessage(error);
