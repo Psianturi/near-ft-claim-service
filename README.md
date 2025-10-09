@@ -329,7 +329,10 @@ P95 Latency:      <5s
 P99 Latency:      <10s
 ```
 
-📚 **Detailed guide**: [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)
+📚 **Detailed guides**:
+- [Benchmark Quick Reference](docs/BENCHMARK_QUICK_REFERENCE.md) - Commands, troubleshooting, FAQ
+- [Workflow Analysis (Indonesian)](docs/WORKFLOW_SANDBOX_BENCHMARK_ANALYSIS.md) - Complete pipeline breakdown
+- [Bottleneck Analysis](docs/BENCHMARK_BOTTLENECK_ANALYSIS.md) - Performance insights & solutions for 200 TPS
 
 🔍 **Metrics sanity check:** After the run, hit `http://127.0.0.1:3000/metrics/jobs` to confirm the `submitted` counter is >0. For dashboards, scrape `http://127.0.0.1:3000/metrics` (Prometheus format) to visualise success/error trends. The benchmark CI pipeline now fails automatically when no jobs reach `submitted`.
 
