@@ -40,6 +40,15 @@
 - Sandbox node emitted kernel tuning warnings (`net.core.rmem_max`, `tcp_rmem` etc.) but remained up; apply `scripts/set_kernel_params.sh` before long-duration runs.
 - Artillery 2.x installation threw `EBADENGINE` warnings because Node 18.19.1 is below the required ≥22.13. Upgrade Node before the 10-minute benchmark to avoid incompatibilities.
 
+## CI Benchmark (2025-10-09) – In Progress
+- **Workflow Run**: [GitHub Actions benchmark](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml)
+- **Scenario**: `testing/artillery/benchmark-sandbox.yml`
+- **Status**: Currently executing sustained 10-minute phase (expect total runtime ~13 minutes from Artillery launch)
+- **Next steps once artifacts land**:
+  - Download `artillery-results-sandbox-*.json` artifact
+  - Extract success rate, error breakdown, latency p95/p99
+  - Append summarized metrics to this section and cross-check against `ensure` thresholds
+
 ## Latest Benchmark (2025-09-29)
 - **Command**: `./testing/artillery/run-artillery-test.sh sandbox`
 - **Configuration**: [`testing/artillery/benchmark-sandbox.yml`](testing/artillery/benchmark-sandbox.yml)

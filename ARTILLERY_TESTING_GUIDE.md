@@ -57,6 +57,8 @@ For quick iterations, `benchmark-sandbox-smoke.yml` trims the run to ~90 seconds
 
 The long-form benchmark under `benchmark-sandbox-10m.yml` extends the sustained phase to 600 seconds at a flat 100 rps after a 10-second warm-up, matching the “100 TPS for 10 minutes” requirement. Expect the full run (pipeline + teardown) to last just over 12 minutes.
 
+**CI runtime tip:** The GitHub Action that drives `benchmark-sandbox.yml` spends ~2 minutes bootstrapping (sandbox start, receiver registration, API validation) before Artillery even begins the 10 minute sustained phase (+45 s warm-up, +60 s ramp, +30 s cooldown). Budget 13–14 minutes for the job to transition from “launch load test” to completion.
+
 Traffic mix: ~70 % single `ft_transfer`, 20 % `/health`, 10 % batch transfers.
 
 Adapt the YAML if you need a calmer profile (e.g., remove the "Hyperdrive" stanza or clone the file under another name). The hyperdrive phase is inspired by [`omni-relayer-benchmark`](https://github.com/frolvanya/omni-relayer-benchmark) which demonstrates 600+ transfers/sec with a Rust-based driver.
@@ -130,6 +132,13 @@ Notes:
    - Parse Artillery output with `jq '.aggregate' <result>.json`.
    - Note success rate, `errors.ETIMEDOUT`, and latency p95/p99; confirm improvements relative to pre-fix runs.
    - Capture highlights in `ARTILLERY_SANDBOX_RESULTS.md` for historical tracking.
+
+### After the run (CI or local)
+
+- Download the JSON artifact referenced by the pipeline log (for CI, use the "Summarize Artillery results" step or the uploaded artifact bundle).
+- Snapshot key metrics (success count, error mix, `p95`/`p99`, mean RPS) into `ARTILLERY_SANDBOX_RESULTS.md` or your notes tracker.
+- Compare against the target assertions (`maxErrorRate`, `p95`, `p99`) and flag regressions immediately.
+- Record environment context: Node version, key count, throttles, and any kernel/sysctl flags applied during the run.
 
 ## 9. Mitigation playbook
 

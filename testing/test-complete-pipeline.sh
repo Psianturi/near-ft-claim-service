@@ -51,6 +51,8 @@ SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
 SANDBOX_SMOKE_TEST=${SANDBOX_SMOKE_TEST:-0}
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
 CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-}}  # Optional override for cluster workers
+SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE:-12}
+export SANDBOX_KEY_POOL_SIZE
 
 # Allow ARTILLERY_CONFIG to override profile selection
 if [ -n "${ARTILLERY_CONFIG:-}" ]; then
@@ -291,12 +293,6 @@ export NEAR_SIGNER_ACCOUNT_ID=$ACCOUNT_ID
 export NEAR_SIGNER_ACCOUNT_PRIVATE_KEY=$SECRET_KEY
 export NEAR_CONTRACT_ACCOUNT_ID=$ACCOUNT_ID
 
-# Step 4a: Prepare receiver accounts for benchmark
-log_info "👥 Bootstrapping sandbox receiver accounts..."
-export SANDBOX_RECEIVER_LIST=${SANDBOX_RECEIVER_LIST:-"user1.$ACCOUNT_ID,user2.$ACCOUNT_ID,user3.$ACCOUNT_ID,alice.$ACCOUNT_ID,bob.$ACCOUNT_ID"}
-node ci/bootstrap-sandbox-accounts.mjs
-log_success "Receiver accounts ready: $SANDBOX_RECEIVER_LIST"
-
 # Step 4: Deploy Contract
 log_info "📦 Deploying FT contract..."
 
@@ -363,8 +359,20 @@ deployContract().catch(console.error);
 EOF
 
 # Try contract deployment but don't fail if it doesn't work
+CONTRACT_DEPLOYED=0
+CONTRACT_READY=0
+
 if node deploy-local.mjs; then
     log_success "Contract deployed successfully"
+    if node ci/wait-for-contract.mjs; then
+        CONTRACT_DEPLOYED=1
+        CONTRACT_READY=1
+        log_success "Contract initialization verified"
+        log_info "⏳ Waiting 5 seconds to ensure sandbox RPC indexes contract code..."
+        sleep 5
+    else
+        log_warning "Contract readiness check failed; sandbox RPC may still be syncing"
+    fi
 else
     log_warning "Contract deployment failed (expected due to NEAR version compatibility)"
     log_info "This is a known limitation - proceeding with API service testing"
@@ -413,10 +421,54 @@ async function mintTokens() {
 mintTokens();
 EOF
 
-if node mint-local.mjs; then
-    log_success "FT supply topped up"
+if [ "$CONTRACT_READY" = "1" ]; then
+    if node mint-local.mjs; then
+        log_success "FT supply topped up"
+    else
+        log_warning "Token minting step failed; continuing with existing balance"
+    fi
 else
-    log_warning "Token minting step failed; continuing with existing balance"
+    log_warning "Skipping FT top-up because contract is not ready"
+fi
+
+# Step 4a: Prepare receiver accounts for benchmark (requires contract readiness)
+if [ "$CONTRACT_READY" = "1" ]; then
+    log_info "👥 Bootstrapping sandbox receiver accounts..."
+    export SANDBOX_RECEIVER_LIST=${SANDBOX_RECEIVER_LIST:-"user1.$ACCOUNT_ID,user2.$ACCOUNT_ID,user3.$ACCOUNT_ID,alice.$ACCOUNT_ID,bob.$ACCOUNT_ID"}
+    if node ci/bootstrap-sandbox-accounts.mjs; then
+        log_success "Receiver accounts ready: $SANDBOX_RECEIVER_LIST"
+    else
+        log_warning "Receiver bootstrap encountered errors; check logs for details"
+    fi
+else
+    log_warning "Skipping receiver bootstrap because contract initialization was not confirmed"
+fi
+
+if [ "$CONTRACT_READY" = "1" ]; then
+    log_info "🔐 Provisioning sandbox master key pool (target ${SANDBOX_KEY_POOL_SIZE})"
+    KEY_ENV_FILE=$(mktemp)
+    if node ci/provision-master-keys.mjs > "$KEY_ENV_FILE"; then
+        # shellcheck disable=SC1090
+        source "$KEY_ENV_FILE"
+        KEY_COUNT=$(node -e "const raw = process.argv[1]; try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) { console.log(parsed.length); process.exit(0); } } catch (_) {} const fallback = (raw || '').split(',').filter(Boolean).length; console.log(fallback);" "$MASTER_ACCOUNT_PRIVATE_KEYS")
+        log_success "Provisioned ${KEY_COUNT} master keys for sandbox signer pool"
+        if [ -z "${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-}" ] || [ "${SANDBOX_MAX_IN_FLIGHT_PER_KEY}" -lt 8 ]; then
+            export SANDBOX_MAX_IN_FLIGHT_PER_KEY=8
+            log_info "   ↳ Boosted SANDBOX_MAX_IN_FLIGHT_PER_KEY to 8 to avoid under-utilisation"
+        fi
+        if [ "$KEY_COUNT" -gt 0 ]; then
+            local_recommended=$(( SANDBOX_MAX_IN_FLIGHT_PER_KEY * KEY_COUNT ))
+            if [ -z "${MAX_IN_FLIGHT:-}" ] || [ "$MAX_IN_FLIGHT" -lt "$local_recommended" ]; then
+                export MAX_IN_FLIGHT=$local_recommended
+                log_info "   ↳ Adjusted MAX_IN_FLIGHT to $MAX_IN_FLIGHT (keys=${KEY_COUNT}, perKey=${SANDBOX_MAX_IN_FLIGHT_PER_KEY})"
+            fi
+        fi
+        log_info "   ↳ SANDBOX_MAX_IN_FLIGHT_PER_KEY=${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-unset}"
+        log_info "   ↳ MAX_IN_FLIGHT=${MAX_IN_FLIGHT:-unset}"
+    else
+        log_warning "Master key provisioning failed; using existing MASTER_ACCOUNT_PRIVATE_KEYS"
+    fi
+    rm -f "$KEY_ENV_FILE"
 fi
 
 # Step 5: Start API Service

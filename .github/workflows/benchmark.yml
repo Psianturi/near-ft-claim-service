@@ -39,13 +39,13 @@ jobs:
       - name: Run sandbox benchmark pipeline
         env:
           CI: 'true'
-          TEST_DURATION: '240'
+          TEST_DURATION: '1200'
           MAX_TPS: '180'
           SANDBOX_HEADROOM_PERCENT: '85'
           SANDBOX_USE_CLUSTER: '1'
           CLUSTER_WORKERS: '4'
           ARTILLERY_PROFILE: 'benchmark-sandbox.yml'
-          SANDBOX_MAX_IN_FLIGHT_PER_KEY: '2'
+          SANDBOX_MAX_IN_FLIGHT_PER_KEY: '8'
         run: ./testing/test-complete-pipeline.sh
 
       - name: Summarize Artillery results
