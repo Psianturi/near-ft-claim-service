@@ -26,11 +26,7 @@ This service is designed to meet NEAR community performance targets for high-thr
 - **Environment Support** – Unified implementation for sandbox, testnet, and mainnet
 - **Performance Tooling** – Artillery benchmarks, CI/CD integration, real-time metrics
 
-**🎯 Performance Targets:**
-- **Throughput**: 95+ transfers per second (Updated 2025-10-10)
-- **Duration**: Sustained for 10 minutes (60,000+ transfers)
-- **Reliability**: >30% success rate (testnet), >95% (sandbox)
-- **Latency**: P95 < 40s (testnet), P95 < 5s (sandbox)
+
 
 **📚 See [Performance Optimization Guide](docs/PERFORMANCE_OPTIMIZATION.md) for detailed setup.**
 
@@ -286,26 +282,6 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 | `TESTNET_TARGET_TPS=70 TESTNET_TEST_DURATION=540 ./testing/test-complete-pipeline-testnet.sh` | **Automated testnet: 70 TPS, 9 minutes** |
 | `SANDBOX_SMOKE_TEST=1 ./testing/test-complete-pipeline.sh` | 90-second smoke with auto sandbox + Artillery |
 
-### 🎯 Latest Benchmark Results (Updated 2025-10-10)
-
-#### Sandbox Testing (65 TPS, 9 minutes)
-```
-✅ Total Requests: 80,850
-✅ Successful:     453 (0.56% success rate)
-✅ Failed:         80,397 (99.44%)
-✅ Average TPS:    63
-✅ P95 Latency:    47.6s
-✅ Status:         Expected (sandbox limitations)
-```
-
-#### Testnet Testing (70 TPS, 9 minutes)
-```
-✅ Total Requests: 32,070
-✅ Successful:     4,088 (12.7% success rate)
-✅ Failed:         27,982 (87.3%)
-✅ Average TPS:    49
-✅ P95 Latency:    39.7s
-✅ Status:         Good performance for testnet!
 ```
 
 ### 🎯 Automated Benchmark Commands
@@ -440,25 +416,6 @@ Deploy the FT contract to a dedicated account you control (for example, `ft.your
 Ensure the recipient has registered storage (`storage_deposit`) before minting to that account.
 
 ---
-
-## Performance Tuning
-
-### Common Issues
-
-**Low TPS (<80)**
-- ✅ Increase throttle: `MAX_TX_PER_KEY_PER_SECOND=35`
-- ✅ Add more keys (aim for 6-8 keys)
-- ✅ Verify `SKIP_STORAGE_CHECK=true`
-
-**High Error Rate (>10%)**
-- ✅ Increase `MAX_IN_FLIGHT_PER_KEY=12`
-- ✅ Reduce per-key throttle: `MAX_TX_PER_KEY_PER_SECOND=25`
-- ✅ Check nonce conflicts in logs
-
-**Timeouts (>20%)**
-- ✅ Use `WAIT_UNTIL=Included` (fastest; `WAIT_UNTIL=None` will be overridden to `Included`)
-- ✅ Increase timeouts: `SERVER_TIMEOUT_MS=180000`
-- ✅ For sandbox: Ensure sufficient system resources
 
 ### Logs and Debugging
 

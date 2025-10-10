@@ -21,7 +21,7 @@ log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
-# Simplified environment setup - use provided values or defaults
+
 export MAX_TPS=${MAX_TPS:-65}  # Default to 65 TPS for standard benchmarking
 export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-200}
 export WAIT_UNTIL=${WAIT_UNTIL:-Included}
@@ -35,9 +35,8 @@ SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-600}  # 10 minutes of sustained load for realism
 
-# Simplified configuration - use provided values with defaults
 
-# Simplified profile selection - focus on standard benchmarking
+# focus on standard benchmarking
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
 CLUSTER_WORKERS=${CLUSTER_WORKERS:-2}  # Default 2 workers for stability
 SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE:-6}
@@ -53,7 +52,6 @@ fi
 
 NEAR_SANDBOX_VERSION=${SANDBOX_VERSION:-${NEAR_SANDBOX_VERSION:-2.7.1}}
 
-# Simplified TPS calculation with standard headroom
 HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-85}
 ARTILLERY_TARGET_TPS=$(( MAX_TPS * HEADROOM_PERCENT / 100 ))
 

@@ -7,6 +7,8 @@ const JOBS_FILE = path.join(DATA_DIR, 'jobs.jsonl');
 export type JobState = {
   id: string;
   createdAt: string;
+  submittedAt?: string;
+  updatedAt?: string;
   status: string;
   receiverId: string;
   amount: string;
