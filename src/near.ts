@@ -603,6 +603,14 @@ class NearConnectionManager {
 
     const bytes = resolveBytes(signedTransaction);
     if (!bytes) {
+      try {
+        const dumpPath = path.join(process.cwd(), 'tmp', `failed-signed-transaction-${Date.now()}.json`);
+  await fs.promises.mkdir(path.dirname(dumpPath), { recursive: true });
+  await fs.promises.writeFile(dumpPath, JSON.stringify(signedTransaction, null, 2));
+        log.warn({ dumpPath, keys: signedTransaction ? Object.keys(signedTransaction) : null }, 'Dumped unsigned legacy fallback payload');
+      } catch (dumpError) {
+        log.warn({ err: dumpError }, 'Failed to dump legacy fallback payload');
+      }
       log.error({ keys: signedTransaction ? Object.keys(signedTransaction) : null }, 'Unable to resolve signed transaction bytes for legacy fallback');
       throw new Error('Signed transaction missing serialisable payload for legacy fallback');
     }

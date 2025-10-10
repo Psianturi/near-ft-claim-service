@@ -1,0 +1,71 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 120
+    pool: 150
+    maxSockets: 400
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 25
+      name: "Warm-up"
+    - duration: 60
+      arrivalRate: 25
+      rampTo: 45
+      name: "Ramp to Target"
+    - duration: 180
+      arrivalRate: 45
+      name: "Sustained Load"
+    - duration: 30
+      arrivalRate: 45
+      rampTo: 25
+      name: "Cool-down"
+  variables:
+    receiverId:
+      - "posma-badge.testnet"
+    amount:
+      - "100000000"
+      - "500000000"
+      - "1000000000"
+scenarios:
+  - name: "Single FT Transfer"
+    weight: 80
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Testnet load {{ $timestamp }}"
+          expect:
+            - statusCode: [200, 400, 409, 429, 500]
+  - name: "Batch FT Transfer"
+    weight: 10
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch test A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch test B"
+          expect:
+            - statusCode: [200, 400, 409, 429, 500]
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+ensure:
+  maxErrorRate: 25
+  p95: 15000
+  p99: 30000

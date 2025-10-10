@@ -39,9 +39,34 @@ nvm use 24
 npm run start:testnet        # ensure service is live
 nvm use 24
 ./testing/artillery/run-artillery-test.sh testnet
+
+# Or run the full orchestration (API + worker + load + summary)
+./testing/test-complete-pipeline-testnet.sh            # uses .env.testnet
+# Custom env or overrides
+TEST_DURATION=300 TESTNET_TARGET_TPS=70 ./testing/test-complete-pipeline-testnet.sh path/to/custom.env
 ```
 
 Use the FastNEAR key in `.env.testnet`. If you add secondary RPC endpoints, list them in `RPC_URLS`.
+
+#### Quick rerun checklist (2025-10-10)
+
+1. **Pastikan konfigurasi terbaru**
+   - `TESTNET_TARGET_TPS=50` (default baru) dan `TESTNET_HTTP_TIMEOUT=120` memberi ruang napas ekstra pada FastNEAR.
+   - Tambahkan `MAX_IN_FLIGHT_PER_KEY` dan `MASTER_ACCOUNT_PRIVATE_KEYS` secukupnya agar setiap akses key menangani beban seimbang.
+2. **Mulai ulang service & worker**
+   ```bash
+   npm run start:testnet:cluster
+   TESTNET_LAUNCH_WORKER=1 npm run run:worker:testnet
+   ```
+   Pastikan log worker tidak lagi menampilkan "NEAR connection not initialized" setelah perbaikan `src/run-worker.ts`.
+3. **Jalankan pipeline**
+   ```bash
+   TESTNET_TARGET_TPS=50 TESTNET_HTTP_TIMEOUT=120 ./testing/test-complete-pipeline-testnet.sh
+   ```
+4. **Evaluasi hasil**
+   - Cek ringkasan Artillery (`REQUESTS`, `200s`, `errors.*`, `p95`).
+   - Tinjau `api-testnet.log` untuk konflik nonce dan `worker-testnet.log` untuk status requeue.
+   - Pastikan seluruh kunci pada `MASTER_ACCOUNT_PRIVATE_KEYS` sudah terdaftar on-chain; jalankan bootstrap bila perlu.
 
 ## 3. Scenario profile (default `testing/artillery/benchmark-*.yml`)
 

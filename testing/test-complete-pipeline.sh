@@ -127,7 +127,7 @@ else
     ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-benchmark-sandbox-50tps.yml}
 fi
 
-NEAR_SANDBOX_VERSION=${NEAR_SANDBOX_VERSION:-2.7.1}
+NEAR_SANDBOX_VERSION=${SANDBOX_VERSION:-${NEAR_SANDBOX_VERSION:-2.7.1}}
 
 HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-$DEFAULT_HEADROOM_PERCENT}
 if [ "$HEADROOM_PERCENT" -lt 10 ] || [ "$HEADROOM_PERCENT" -gt 100 ]; then
@@ -218,6 +218,7 @@ log_info "   - Sandbox Port: $SANDBOX_PORT"
 log_info "   - API Port: $API_PORT" 
 log_info "   - Test Duration: ${TEST_DURATION}s"
 log_info "   - Max TPS Target: $MAX_TPS"
+log_info "   - Sandbox Version: ${NEAR_SANDBOX_VERSION}"
 log_info "   - Headroom: ${HEADROOM_PERCENT}%"
 log_info "   - Artillery sustained target: ${SUSTAINED_RATE} rps"
 log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
@@ -588,7 +589,7 @@ else
 fi
 API_PID=$!
 
-if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 40 "API Service"; then
+if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 50 "API Service"; then
     log_error "API service failed to start. Check api.log"
     cat api.log
     exit 1

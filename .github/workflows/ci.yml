@@ -50,6 +50,7 @@ jobs:
       - name: Sandbox integration tests
         env:
           CI: 'true'
+          NEAR_SANDBOX_VERSION: '2.7.1'
         run: npm run test:sandbox
 
       - name: Upload Playwright report on failure

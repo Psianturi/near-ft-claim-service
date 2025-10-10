@@ -15,9 +15,7 @@
     "start:sandbox": "NEAR_ENV=sandbox tsx src/index.ts",
     "start:sandbox:cluster": "NEAR_ENV=sandbox tsx src/cluster.ts",
     "start": "npm run start:testnet",
-    "run:worker:testnet": "NEAR_ENV=testnet tsx src/run-worker.ts",
-    "run:worker:sandbox": "NEAR_ENV=sandbox tsx src/run-worker.ts",
-    "benchmark": "./node_modules/.bin/ts-node src/benchmark.ts",
+    "register:testnet:keys": "node scripts/register-testnet-keys.mjs",
     "test:sandbox": "tsx src/test-sandbox.ts",
     "test:testnet": "tsx src/test-testnet.ts",
     "sandbox": "near-sandbox"
@@ -44,7 +42,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@eclipseeer/near-api-ts": "^0.1.1",
+    "@eclipseeer/near-api-ts": "^0.2.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",

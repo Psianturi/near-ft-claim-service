@@ -9,11 +9,67 @@ import {
   createMemoryKeyService,
   createMemorySigner,
   functionCall,
-  yoctoNear,
   teraGas,
   mainnet,
   testnet,
 } from '@eclipseeer/near-api-ts';
+
+type NearClient = ReturnType<typeof createClient>;
+type NearSigner = Awaited<ReturnType<typeof createMemorySigner>>;
+type NearNetwork = Parameters<typeof createClient>[0]['network'];
+type RpcConfig = NearNetwork['rpcs']['regular'][number];
+type MemoryKeyServiceInput = Parameters<typeof createMemoryKeyService>[0];
+type PrivateKeyString = Extract<MemoryKeyServiceInput, { keySource: { privateKey: unknown } }>['keySource']['privateKey'];
+type FunctionCallParamsAny = Parameters<typeof functionCall>[0];
+type CallContractReadParams = Parameters<NearClient['callContractReadFunction']>[0];
+
+const createFunctionCallParams = <Args extends Record<string, unknown>>(params: {
+  functionName: string;
+  fnArgsJson: Args;
+  gasLimit: FunctionCallParamsAny['gasLimit'];
+  attachedDeposit?: FunctionCallParamsAny['attachedDeposit'];
+}): FunctionCallParamsAny => {
+  const { functionName, fnArgsJson, gasLimit, attachedDeposit } = params;
+  const base: Record<string, unknown> = {
+    functionName,
+    fnName: functionName,
+    fnArgsJson,
+    functionArgs: fnArgsJson,
+    gasLimit,
+  };
+
+  if (attachedDeposit) {
+    base.attachedDeposit = attachedDeposit;
+  }
+
+  return base as FunctionCallParamsAny;
+};
+
+const createReadFunctionParams = <Args extends Record<string, unknown> | undefined>(params: {
+  contractAccountId: string;
+  functionName: string;
+  functionArgs?: Args;
+  options?: unknown;
+}): CallContractReadParams => {
+  const { contractAccountId, functionName, functionArgs, options } = params;
+
+  const base: Record<string, unknown> = {
+    contractAccountId,
+    functionName,
+    methodName: functionName,
+  };
+
+  if (functionArgs !== undefined) {
+    base.functionArgs = functionArgs;
+    base.fnArgsJson = functionArgs;
+  }
+
+  if (options !== undefined) {
+    base.options = options;
+  }
+
+  return base as CallContractReadParams;
+};
 
 export interface SimpleFTConfig {
   networkId: 'sandbox' | 'testnet' | 'mainnet';
@@ -24,47 +80,33 @@ export interface SimpleFTConfig {
 }
 
 export class SimpleFTService {
-  private client: any;
-  private signer: any;
-  private config: SimpleFTConfig;
+  private client: NearClient | null = null;
+  private signer: NearSigner | null = null;
+  private readonly config: SimpleFTConfig;
+  private readonly decoder = new TextDecoder();
 
   constructor(config: SimpleFTConfig) {
     this.config = config;
   }
 
   async initialize(): Promise<void> {
-    // Create network configuration
-    let network: any;
-    if (this.config.networkId === 'testnet') {
-      network = testnet;
-    } else if (this.config.networkId === 'mainnet') {
-      network = mainnet;
-    } else {
-      // Sandbox - custom network
-      network = {
-        networkId: 'sandbox',
-        nodeUrl: this.config.nodeUrl || 'http://127.0.0.1:3030',
-        walletUrl: 'http://127.0.0.1:4000/wallet',
-        helperUrl: 'http://127.0.0.1:3000',
-        explorerUrl: 'http://127.0.0.1:8080',
-      };
-    }
-
-    this.client = createClient({ network });
+  const network = this.resolveNetwork();
+  const client = createClient({ network });
+  this.client = client;
 
     // Create key service - try different key formats
-    const privateKey = this.config.signerPrivateKey.startsWith('ed25519:') 
-      ? this.config.signerPrivateKey 
-      : `ed25519:${this.config.signerPrivateKey}`;
+    const privateKey = (this.config.signerPrivateKey.startsWith('ed25519:')
+      ? this.config.signerPrivateKey
+      : `ed25519:${this.config.signerPrivateKey}`) as PrivateKeyString;
 
     try {
       const keyService = await createMemoryKeyService({
-        keySource: { privateKey: privateKey as any },
+        keySource: { privateKey },
       });
 
       this.signer = await createMemorySigner({
         signerAccountId: this.config.signerAccountId,
-        client: this.client,
+        client,
         keyService,
       });
     } catch (error: any) {
@@ -73,9 +115,7 @@ export class SimpleFTService {
   }
 
   async sendFT(receiverId: string, amount: string, memo?: string): Promise<any> {
-    if (!this.signer) {
-      throw new Error('Service not initialized. Call initialize() first.');
-    }
+    const signer = this.requireSigner();
 
     console.log(`🚀 Sending ${amount} FT tokens to ${receiverId}...`);
 
@@ -84,17 +124,19 @@ export class SimpleFTService {
       await this.registerStorage(receiverId);
 
       // Send FT transfer
-      const result = await this.signer.executeTransaction({
-        action: functionCall({
-          fnName: 'ft_transfer',
-          fnArgsJson: {
-            receiver_id: receiverId,
-            amount,
-            memo: memo || null,
-          },
-          gasLimit: teraGas('30'),
-          attachedDeposit: { yoctoNear: '1' },
-        }),
+      const result = await signer.executeTransaction({
+        action: functionCall(
+          createFunctionCallParams({
+            functionName: 'ft_transfer',
+            fnArgsJson: {
+              receiver_id: receiverId,
+              amount,
+              memo: memo || null,
+            },
+            gasLimit: teraGas('30'),
+            attachedDeposit: { yoctoNear: '1' },
+          }),
+        ),
         receiverAccountId: this.config.contractId,
       });
 
@@ -111,16 +153,20 @@ export class SimpleFTService {
     try {
       console.log(`📝 Registering storage for ${accountId}...`);
       
-      await this.signer.executeTransaction({
-        action: functionCall({
-          fnName: 'storage_deposit',
-          fnArgsJson: {
-            account_id: accountId,
-            registration_only: true,
-          },
-          gasLimit: teraGas('30'),
-          attachedDeposit: { yoctoNear: '1250000000000000000000' },
-        }),
+      const signer = this.requireSigner();
+
+      await signer.executeTransaction({
+        action: functionCall(
+          createFunctionCallParams({
+            functionName: 'storage_deposit',
+            fnArgsJson: {
+              account_id: accountId,
+              registration_only: true,
+            },
+            gasLimit: teraGas('30'),
+            attachedDeposit: { yoctoNear: '1250000000000000000000' },
+          }),
+        ),
         receiverAccountId: this.config.contractId,
       });
 
@@ -138,16 +184,126 @@ export class SimpleFTService {
 
   async getBalance(accountId?: string): Promise<string> {
     const target = accountId || this.config.signerAccountId;
-    
+    const client = this.requireClient();
+
     try {
-      const balance = await this.client.view({
-        accountId: this.config.contractId,
-        methodName: 'ft_balance_of',
-        args: { account_id: target },
-      });
-      return balance;
+      const response = await client.callContractReadFunction(
+        createReadFunctionParams({
+          contractAccountId: this.config.contractId,
+          functionName: 'ft_balance_of',
+          functionArgs: { account_id: target },
+          options: {
+            deserializeResult: ({ rawResult }: { rawResult: number[] }) =>
+              this.parseJsonResult(rawResult),
+          },
+        }),
+      );
+
+      const result = response?.result;
+      if (typeof result === 'string') {
+        return result;
+      }
+
+      if (result == null) {
+        return '0';
+      }
+
+      return String(result);
     } catch (error: any) {
       throw new Error(`Failed to get balance for ${target}: ${error.message}`);
+    }
+  }
+
+  private resolveNetwork(): NearNetwork {
+    if (this.config.networkId === 'mainnet') {
+      return this.customizeNetwork(mainnet);
+    }
+
+    if (this.config.networkId === 'testnet') {
+      return this.customizeNetwork(testnet);
+    }
+
+    const rpcUrl = this.config.nodeUrl || 'http://127.0.0.1:3030';
+    const rpc: RpcConfig = { url: rpcUrl };
+    return {
+      rpcs: {
+        regular: [rpc],
+        archival: [rpc],
+      },
+    };
+  }
+
+  private customizeNetwork(source: NearNetwork): NearNetwork {
+    const cloned = this.cloneNetwork(source);
+    const customUrl = this.config.nodeUrl;
+
+    if (!customUrl) {
+      return cloned;
+    }
+
+    const primary: RpcConfig = { url: customUrl };
+    const seen = new Set<string>([primary.url]);
+
+    const regular: RpcConfig[] = [primary];
+    for (const rpc of cloned.rpcs.regular) {
+      if (seen.has(rpc.url)) continue;
+      seen.add(rpc.url);
+      regular.push(rpc);
+    }
+
+    const archival = cloned.rpcs.archival.length
+      ? cloned.rpcs.archival
+      : [primary];
+
+    return {
+      rpcs: {
+        regular,
+        archival,
+      },
+    };
+  }
+
+  private cloneNetwork(source: NearNetwork): NearNetwork {
+    return {
+      rpcs: {
+        regular: source.rpcs.regular.map((rpc) => this.cloneRpc(rpc)),
+        archival: source.rpcs.archival.map((rpc) => this.cloneRpc(rpc)),
+      },
+    };
+  }
+
+  private cloneRpc(rpc: RpcConfig): RpcConfig {
+    return rpc.headers
+      ? { url: rpc.url, headers: { ...rpc.headers } }
+      : { url: rpc.url };
+  }
+
+  private requireSigner(): NearSigner {
+    if (!this.signer) {
+      throw new Error('Service not initialized. Call initialize() first.');
+    }
+
+    return this.signer;
+  }
+
+  private requireClient(): NearClient {
+    if (!this.client) {
+      throw new Error('Service not initialized. Call initialize() first.');
+    }
+
+    return this.client;
+  }
+
+  private parseJsonResult(rawResult: number[]): unknown {
+    if (!rawResult || rawResult.length === 0) {
+      return '0';
+    }
+
+    try {
+      const text = this.decoder.decode(Uint8Array.from(rawResult));
+      return JSON.parse(text);
+    } catch {
+      return '0';
     }
   }
 }

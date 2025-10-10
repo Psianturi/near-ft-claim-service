@@ -27,6 +27,33 @@ export type TransferExecutionResult = {
 
 const batcher = new RequestBatcher();
 const inFlightJobs = new Set<string>();
+
+const MAX_PENDING_JOBS = (() => {
+  const parsed = Number.parseInt(process.env.MAX_PENDING_JOBS || '600', 10);
+  return Number.isFinite(parsed) && parsed > 10 ? parsed : 600;
+})();
+
+export class ServiceBusyError extends Error {
+  code = 'SERVICE_BUSY';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ServiceBusyError';
+  }
+}
+
+function getPendingJobCountInternal(): number {
+  return inFlightJobs.size;
+}
+
+function ensureCapacityFor(requestedJobs: number): void {
+  const pending = getPendingJobCountInternal();
+  if (pending + requestedJobs > MAX_PENDING_JOBS) {
+    const detail = `${pending} pending, requested ${requestedJobs}, limit ${MAX_PENDING_JOBS}`;
+    log.warn({ pending, requestedJobs, limit: MAX_PENDING_JOBS }, 'Pending job limit exceeded');
+    throw new ServiceBusyError(`Pending transfer backlog is full (${detail})`);
+  }
+}
 const pendingResolutions = new Map<
   string,
   {
@@ -83,6 +110,8 @@ batcher.on('batch', async (batch) => {
 export async function submitTransfers(
   transfers: TransferRequestInput[],
 ): Promise<TransferExecutionResult[]> {
+  ensureCapacityFor(transfers.length);
+
   const jobs = transfers.map((transfer) => {
     const job = persistence.createJob({
       receiverId: transfer.receiverId,
@@ -209,8 +238,8 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
         const bounds = await withRetry(() =>
           client.callContractReadFunction({
             contractAccountId: config.ftContract,
-            fnName: 'storage_balance_bounds',
-            response: { resultTransformer: decodeJson },
+            functionName: 'storage_balance_bounds',
+            options: { deserializeResult: decodeJson },
           }),
         );
         const b: any = bounds ?? {};
@@ -226,9 +255,9 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
           const storage = await withRetry(() =>
             client.callContractReadFunction({
               contractAccountId: config.ftContract,
-              fnName: 'storage_balance_of',
-              fnArgsJson: { account_id: receiverId },
-              response: { resultTransformer: decodeJson },
+              functionName: 'storage_balance_of',
+              functionArgs: { account_id: receiverId },
+              options: { deserializeResult: decodeJson },
             }),
           );
 
@@ -294,7 +323,7 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
       if (needsDeposit) {
         jobActions.push(
           functionCall({
-            fnName: 'storage_deposit',
+            functionName: 'storage_deposit',
             fnArgsJson: {
               account_id: receiverId,
               registration_only: true,
@@ -307,7 +336,7 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
 
       jobActions.push(
         functionCall({
-          fnName: 'ft_transfer',
+          functionName: 'ft_transfer',
           fnArgsJson: {
             receiver_id: job.receiverId,
             amount: job.amount,
@@ -420,6 +449,15 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
     }
   }
 }
+
+export function getPendingJobCount(): number {
+  return getPendingJobCountInternal();
+}
+
+export function getPendingJobLimit(): number {
+  return MAX_PENDING_JOBS;
+}
+
 
 function handleJobFailure(job: JobState, batchId: string, error: unknown, message: string): void {
   const attempts = (job.attempts ?? 0) + 1;
