@@ -14,7 +14,13 @@ import { config } from './config.js';
 import { createLogger } from './logger.js';
 import { getThrottleConfig } from './key-throttle.js';
 import persistence from './persistence-jsonl.js';
-import { submitTransfers, requeueOutstandingJobs } from './transfer-coordinator.js';
+import {
+  submitTransfers,
+  requeueOutstandingJobs,
+  ServiceBusyError,
+  getPendingJobCount,
+  getPendingJobLimit,
+} from './transfer-coordinator.js';
 
 const log = createLogger({ module: 'server' });
 const metricsLog = log.child({ component: 'metrics' });
@@ -56,6 +62,12 @@ const activeQueueGauge = new Gauge({
 const queuedRequestGauge = new Gauge({
   name: 'ft_service_queue_length',
   help: 'Number of requests waiting in the concurrency queue',
+  registers: [metricsRegistry],
+});
+
+const pendingJobsGauge = new Gauge({
+  name: 'ft_service_pending_jobs',
+  help: 'Number of pending transfer jobs tracked by the coordinator',
   registers: [metricsRegistry],
 });
 
@@ -298,6 +310,7 @@ setInterval(() => {
   const stats = concurrencyManager.getStats();
   activeQueueGauge.set(stats.active);
   queuedRequestGauge.set(stats.queueLength);
+  pendingJobsGauge.set(getPendingJobCount());
   refreshJobStatusMetrics();
 
   requestCount = 0;
@@ -549,6 +562,21 @@ app.post('/send-ft', async (req: Request, res: Response) => {
       message: `FT transfers executed successfully (batch size ${results.length})`,
     });
   } catch (error: any) {
+    if (error instanceof ServiceBusyError || error?.code === 'SERVICE_BUSY') {
+      requestLog.warn({
+        pendingJobs: getPendingJobCount(),
+        capacity: getPendingJobLimit(),
+      }, 'Rejecting transfer request due to pending job backlog');
+      rejectedRequestCounter.inc();
+      return res.status(503).send({
+        error: 'Service overloaded, please retry later',
+        details: error.message,
+        pendingJobs: getPendingJobCount(),
+        capacity: getPendingJobLimit(),
+        retryAfterSeconds: 5,
+      });
+    }
+
     const txExecutionError = error?.cause?.data?.TxExecutionError;
     const errorMessage = extractErrorMessage(error);
 
@@ -569,6 +597,24 @@ app.post('/send-ft', async (req: Request, res: Response) => {
     }, 'Failed to initiate FT transfer');
 
     const cause = (error && typeof error === 'object') ? (error as any).cause : undefined;
+    const rateLimitLike = cause && typeof cause === 'object' && 'msBeforeNext' in cause && 'remainingPoints' in cause;
+
+    if (rateLimitLike) {
+      const retryAfterMs = Number((cause as any).msBeforeNext ?? 0);
+      requestLog.warn({
+        pendingJobs: getPendingJobCount(),
+        capacity: getPendingJobLimit(),
+        retryAfterMs,
+      }, 'Rejecting transfer request due to rate limiter exhaustion');
+      rejectedRequestCounter.inc();
+
+      return res.status(429).send({
+        error: 'Rate limit exceeded, please retry later',
+        retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : undefined,
+        details: errorMessage,
+      });
+    }
+
     const debugInfo = isSandboxEnv
       ? {
           code: cause?.code ?? error?.code ?? null,

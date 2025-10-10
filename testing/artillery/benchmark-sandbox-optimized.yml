@@ -1,0 +1,79 @@
+config:
+  target: 'http://127.0.0.1:3000'
+  http:
+    timeout: 60        # Shorter timeout to fail fast when overloaded
+    pool: 100          # Lower pool size to avoid over-saturating the sandbox
+    maxSockets: 200    # Reasonable ceiling for a 50 TPS target
+  phases:
+    - duration: 45
+      arrivalRate: 5
+      rampTo: 20
+      name: "Light warm-up (0-60s)"
+    - duration: 60
+      arrivalRate: 20
+      rampTo: 40
+      name: "Ramp to 40 TPS (60-120s)"
+    - duration: 180
+      arrivalRate: 50
+      name: "Sustain 50 TPS (120-300s)"   # Three-minute target that is realistic for sandbox
+    - duration: 60
+      arrivalRate: 30
+      rampTo: 5
+      name: "Cool-down (300-360s)"
+  variables:
+    receiverId:
+      - "user1.test.near"
+      - "user2.test.near"
+      - "user3.test.near"
+      - "user4.test.near"
+      - "user5.test.near"
+      - "alice.test.near"
+      - "bob.test.near"
+      - "charlie.test.near"
+    amount:
+      - "1000000000000000000000000"
+      - "5000000000000000000000000"
+      - "10000000000000000000000000"
+      - "100000000000000000000000"
+scenarios:
+  - name: "Single FT Transfer"
+    weight: 80
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            receiverId: "{{ receiverId }}"
+            amount: "{{ amount }}"
+            memo: "Sandbox optimized - {{ $timestamp }}"
+          expect:
+            - statusCode: 200
+  - name: "Batched FT Transfers (2x)"
+    weight: 10
+    flow:
+      - post:
+          url: "/send-ft"
+          headers:
+            Content-Type: "application/json"
+          json:
+            transfers:
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch Opt A"
+              - receiverId: "{{ receiverId }}"
+                amount: "{{ amount }}"
+                memo: "Batch Opt B"
+          expect:
+            - statusCode: 200
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+ensure:
+  maxErrorRate: 10   # Looser bound for early experimentation
+  p95: 8000          # Sandbox p95 often spikes
+  p99: 15000         # Keep the p99 high-water mark explicit

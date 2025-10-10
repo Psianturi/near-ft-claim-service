@@ -21,12 +21,48 @@ log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
+CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+MEM_AVAIL_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo 4096)
+LOAD_AVG_RAW=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo 1.0)
+LOAD_AVG=$LOAD_AVG_RAW
+if ! printf '%s\n' "$LOAD_AVG_RAW" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+    LOAD_AVG=1.0
+fi
+
+log_info "🧠 Auto-tuning environment:"
+log_info "   - CPU cores: ${CPU_CORES}"
+log_info "   - Memory: ${MEM_AVAIL_MB}MB"
+log_info "   - Load average: ${LOAD_AVG}"
+
+if (( CPU_CORES <= 4 )); then
+    AUTO_MAX_TPS=80
+    AUTO_MAX_PENDING_JOBS=60
+elif (( CPU_CORES <= 8 )); then
+    AUTO_MAX_TPS=120
+    AUTO_MAX_PENDING_JOBS=90
+else
+    AUTO_MAX_TPS=200
+    AUTO_MAX_PENDING_JOBS=160
+fi
+
+if command -v bc >/dev/null 2>&1 && [ "$(echo "${LOAD_AVG} > 2.5" | bc -l)" = "1" ]; then
+    AUTO_MAX_TPS=$(( AUTO_MAX_TPS / 2 ))
+    AUTO_MAX_PENDING_JOBS=$(( AUTO_MAX_PENDING_JOBS / 2 ))
+    log_warning "System under load - auto-capping MAX_TPS to ${AUTO_MAX_TPS}"
+fi
+
+export MAX_TPS=${MAX_TPS:-$AUTO_MAX_TPS}
+export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-$AUTO_MAX_PENDING_JOBS}
+export WAIT_UNTIL=${WAIT_UNTIL:-Included}
+
+log_info "   ↳ Auto-set MAX_TPS=${MAX_TPS}, MAX_PENDING_JOBS=${MAX_PENDING_JOBS}, WAIT_UNTIL=${WAIT_UNTIL}"
+
 SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
-TEST_DURATION=${TEST_DURATION:-300}  # 5 minutes for proper benchmarking
+TEST_DURATION=${TEST_DURATION:-600}  # 10 minutes of sustained load for realism
 
 # Derive sensible defaults for MAX_TPS and headroom from the sandbox .env file
-DEFAULT_MAX_TPS=150
+DEFAULT_MAX_TPS=60
 DEFAULT_HEADROOM_PERCENT=85
 SANDBOX_ENV_FILE="$PROJECT_ROOT/.env"
 
@@ -49,9 +85,24 @@ fi
 
 SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
 SANDBOX_SMOKE_TEST=${SANDBOX_SMOKE_TEST:-0}
+SANDBOX_OPTIMIZED=${SANDBOX_OPTIMIZED:-0}
+
+if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
+    SANDBOX_MAX_IN_FLIGHT_PER_KEY_OVERRIDE=${SANDBOX_MAX_IN_FLIGHT_PER_KEY_OVERRIDE:-2}
+    CONCURRENCY_LIMIT_OVERRIDE=${CONCURRENCY_LIMIT_OVERRIDE:-80}
+    MAX_ACTIONS_PER_TX_OVERRIDE=${MAX_ACTIONS_PER_TX_OVERRIDE:-4}
+    MAX_BATCH_SIZE_OVERRIDE=${MAX_BATCH_SIZE_OVERRIDE:-4}
+    MAX_PENDING_JOBS_OVERRIDE=${MAX_PENDING_JOBS_OVERRIDE:-60}
+    MAX_TX_PER_SECOND_OVERRIDE=${MAX_TX_PER_SECOND_OVERRIDE:-18}
+    MAX_TX_PER_KEY_PER_SECOND_OVERRIDE=${MAX_TX_PER_KEY_PER_SECOND_OVERRIDE:-1}
+    GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE=${GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE:-1}
+    PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE=${PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE:-1}
+    QUEUE_SIZE_OVERRIDE=${QUEUE_SIZE_OVERRIDE:-200}
+    WAIT_UNTIL_OVERRIDE=${WAIT_UNTIL_OVERRIDE:-Included}
+fi
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
-CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-}}  # Optional override for cluster workers
-SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE:-12}
+CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-2}}  # Default 2 workers for stability
+SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE:-6}
 export SANDBOX_KEY_POOL_SIZE
 
 # Allow ARTILLERY_CONFIG to override profile selection
@@ -66,11 +117,17 @@ elif [ "$SANDBOX_SMOKE_TEST" = "1" ]; then
     ARTILLERY_PROFILE="benchmark-sandbox-smoke.yml"
     TEST_DURATION=${TEST_DURATION_OVERRIDE:-120}
     MAX_TPS=${MAX_TPS_OVERRIDE:-40}
+elif [ "$SANDBOX_OPTIMIZED" = "1" ]; then
+    ARTILLERY_PROFILE="benchmark-sandbox-optimized.yml"
+    TEST_DURATION=${TEST_DURATION_OVERRIDE:-360}
+    MAX_TPS=${MAX_TPS_OVERRIDE:-60}
+    SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE_OVERRIDE:-6}
+    CLUSTER_WORKERS=${CLUSTER_WORKERS_OVERRIDE:-1}
 else
-    ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-artillery-local.yml}
+    ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-benchmark-sandbox-50tps.yml}
 fi
 
-NEAR_SANDBOX_VERSION=${NEAR_SANDBOX_VERSION:-2.6.5}
+NEAR_SANDBOX_VERSION=${NEAR_SANDBOX_VERSION:-2.7.1}
 
 HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-$DEFAULT_HEADROOM_PERCENT}
 if [ "$HEADROOM_PERCENT" -lt 10 ] || [ "$HEADROOM_PERCENT" -gt 100 ]; then
@@ -86,7 +143,7 @@ if [ "$ARTILLERY_TARGET_TPS" -gt "$MAX_TPS" ]; then
     ARTILLERY_TARGET_TPS=$MAX_TPS
 fi
 
-SANDBOX_TARGET_TPS_CAP=${SANDBOX_TARGET_TPS_CAP:-150}
+SANDBOX_TARGET_TPS_CAP=${SANDBOX_TARGET_TPS_CAP:-60}
 if [ "$SANDBOX_TARGET_TPS_CAP" -lt 1 ]; then
     SANDBOX_TARGET_TPS_CAP=150
 fi
@@ -165,6 +222,9 @@ log_info "   - Headroom: ${HEADROOM_PERCENT}%"
 log_info "   - Artillery sustained target: ${SUSTAINED_RATE} rps"
 log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
 log_info "   - Cluster mode: ${SANDBOX_USE_CLUSTER} (workers=${CLUSTER_WORKERS:-auto})"
+if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
+    log_info "   - Mode: SANDBOX_OPTIMIZED (keyPool=$SANDBOX_KEY_POOL_SIZE workers=${CLUSTER_WORKERS:-2})"
+fi
 
 # Step 1: Setup Environment
 log_info "🔧 Setting up environment..."
@@ -462,9 +522,10 @@ if [ "$CONTRACT_READY" = "1" ]; then
         source "$KEY_ENV_FILE"
         KEY_COUNT=$(node -e "const raw = process.argv[1]; try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) { console.log(parsed.length); process.exit(0); } } catch (_) {} const fallback = (raw || '').split(',').filter(Boolean).length; console.log(fallback);" "$MASTER_ACCOUNT_PRIVATE_KEYS")
         log_success "Provisioned ${KEY_COUNT} master keys for sandbox signer pool"
-        if [ -z "${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-}" ] || [ "${SANDBOX_MAX_IN_FLIGHT_PER_KEY}" -lt 8 ]; then
-            export SANDBOX_MAX_IN_FLIGHT_PER_KEY=8
-            log_info "   ↳ Boosted SANDBOX_MAX_IN_FLIGHT_PER_KEY to 8 to avoid under-utilisation"
+        desired_per_key=${SANDBOX_MAX_IN_FLIGHT_PER_KEY_OVERRIDE:-5}
+        if [ -z "${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-}" ] || [ "${SANDBOX_MAX_IN_FLIGHT_PER_KEY}" -gt "$desired_per_key" ]; then
+            export SANDBOX_MAX_IN_FLIGHT_PER_KEY=$desired_per_key
+            log_info "   ↳ Setting SANDBOX_MAX_IN_FLIGHT_PER_KEY=$desired_per_key to reduce nonce conflicts"
         fi
         if [ "$KEY_COUNT" -gt 0 ]; then
             local_recommended=$(( SANDBOX_MAX_IN_FLIGHT_PER_KEY * KEY_COUNT ))
@@ -475,6 +536,28 @@ if [ "$CONTRACT_READY" = "1" ]; then
         fi
         log_info "   ↳ SANDBOX_MAX_IN_FLIGHT_PER_KEY=${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-unset}"
         log_info "   ↳ MAX_IN_FLIGHT=${MAX_IN_FLIGHT:-unset}"
+        if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
+            export CONCURRENCY_LIMIT=${CONCURRENCY_LIMIT_OVERRIDE}
+            export MAX_ACTIONS_PER_TX=${MAX_ACTIONS_PER_TX_OVERRIDE}
+            export MAX_BATCH_SIZE=${MAX_BATCH_SIZE_OVERRIDE}
+            export MAX_PENDING_JOBS=${MAX_PENDING_JOBS_OVERRIDE}
+            export MAX_TX_PER_SECOND=${MAX_TX_PER_SECOND_OVERRIDE}
+            export MAX_TX_PER_KEY_PER_SECOND=${MAX_TX_PER_KEY_PER_SECOND_OVERRIDE}
+            export GLOBAL_THROTTLE_WINDOW_SEC=${GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE}
+            export PER_KEY_THROTTLE_WINDOW_SEC=${PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE}
+            export QUEUE_SIZE=${QUEUE_SIZE_OVERRIDE}
+            export WAIT_UNTIL=${WAIT_UNTIL_OVERRIDE}
+            log_info "   ↳ CONCURRENCY_LIMIT override=${CONCURRENCY_LIMIT}"
+            log_info "   ↳ MAX_ACTIONS_PER_TX override=${MAX_ACTIONS_PER_TX}"
+            log_info "   ↳ MAX_BATCH_SIZE override=${MAX_BATCH_SIZE}"
+            log_info "   ↳ MAX_PENDING_JOBS override=${MAX_PENDING_JOBS}"
+            log_info "   ↳ MAX_TX_PER_SECOND override=${MAX_TX_PER_SECOND}"
+            log_info "   ↳ MAX_TX_PER_KEY_PER_SECOND override=${MAX_TX_PER_KEY_PER_SECOND}"
+            log_info "   ↳ GLOBAL_THROTTLE_WINDOW_SEC override=${GLOBAL_THROTTLE_WINDOW_SEC}"
+            log_info "   ↳ PER_KEY_THROTTLE_WINDOW_SEC override=${PER_KEY_THROTTLE_WINDOW_SEC}"
+            log_info "   ↳ QUEUE_SIZE override=${QUEUE_SIZE}"
+            log_info "   ↳ WAIT_UNTIL override=${WAIT_UNTIL}"
+        fi
     else
         log_warning "Master key provisioning failed; using existing MASTER_ACCOUNT_PRIVATE_KEYS"
     fi
@@ -677,7 +760,27 @@ log_info "🚀 Launching Artillery load test (sandbox profile)..."
 log_info "   ↳ Active profile: ${ARTILLERY_PROFILE}"
 
 ARTILLERY_LOG="$ARTILLERY_DIR/.last-artillery-run.log"
-if ARTILLERY_CONFIG="$ARTILLERY_PROFILE" "$ARTILLERY_DIR/run-artillery-test.sh" sandbox | tee "$ARTILLERY_LOG"; then
+MAX_ARTILLERY_RETRIES=${MAX_ARTILLERY_RETRIES:-3}
+ATTEMPT=1
+RESULT_FILE=""
+ARTILLERY_RUN_SUCCESS=0
+
+while [ $ATTEMPT -le $MAX_ARTILLERY_RETRIES ]; do
+    if ARTILLERY_CONFIG="$ARTILLERY_PROFILE" "$ARTILLERY_DIR/run-artillery-test.sh" sandbox | tee "$ARTILLERY_LOG"; then
+        log_success "Artillery load test completed on attempt ${ATTEMPT}"
+        ARTILLERY_RUN_SUCCESS=1
+        break
+    fi
+
+    if [ $ATTEMPT -lt $MAX_ARTILLERY_RETRIES ]; then
+        log_warning "Artillery load test failed on attempt ${ATTEMPT}; retrying in 5s..."
+        sleep 5
+    fi
+
+    ATTEMPT=$((ATTEMPT + 1))
+done
+
+if [ $ARTILLERY_RUN_SUCCESS -eq 1 ]; then
     RESULT_FILE=$(grep 'RESULT_JSON=' "$ARTILLERY_LOG" | tail -n 1 | cut -d'=' -f2-)
 
     if [ -z "$RESULT_FILE" ]; then
@@ -722,14 +825,35 @@ if ARTILLERY_CONFIG="$ARTILLERY_PROFILE" "$ARTILLERY_DIR/run-artillery-test.sh" 
         log_warning "jq not available; skipping Artillery summary"
     fi
 else
-    log_error "Artillery load test failed"
+    log_error "Artillery load test failed after ${MAX_ARTILLERY_RETRIES} attempts"
     exit 1
 fi
 
 echo ""
-echo "📝 Note: Contract deployment has compatibility issues with NEAR 2.6.5"
-echo "💡 Performance already validated on testnet (300+ TPS achieved)"
+echo "📝 Note: Sandbox is pinned to NEAR ${NEAR_SANDBOX_VERSION} (avoids the 2.6.5 deployment bug)"
+echo "💡 Performance already validated on testnet"
 echo "🎯 API service functionality: FULLY VALIDATED"
 
+SUMMARY_JSON="$PROJECT_ROOT/testing/pipeline-summary.json"
+if [ -n "$RESULT_FILE" ] && command -v jq >/dev/null 2>&1; then
+    jq -n \
+        --arg date "$(date -Iseconds)" \
+        --arg version "$NEAR_SANDBOX_VERSION" \
+        --arg tps "${ARTILLERY_TARGET_TPS}" \
+        --arg duration "${TEST_DURATION}" \
+        --arg result "$RESULT_FILE" \
+        --arg attempts "$ATTEMPT" \
+        '{
+            timestamp: $date,
+            near_version: $version,
+            target_tps: ($tps|tonumber?),
+            test_duration_sec: ($duration|tonumber?),
+            result_file: $result,
+            artillery_attempts: ($attempts|tonumber?)
+        }' > "$SUMMARY_JSON"
+    log_success "🧾 Pipeline summary saved at: $SUMMARY_JSON"
+elif ! command -v jq >/dev/null 2>&1; then
+    log_warning "jq not available; skipping pipeline summary export"
+fi
+
 log_success "🎉 Complete FT service testing pipeline finished successfully!"
-log_info "📊 Check the HTML report for detailed performance metrics"

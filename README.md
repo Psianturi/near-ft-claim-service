@@ -480,3 +480,5 @@ near-ft-helper/            # Sandbox deployment helper
 - **[Testing Guide](docs/testing.md)** - Test strategy and best practices
 - **[CI/CD Guide](docs/ci.md)** - GitHub Actions workflows
 - **[API Documentation](docs/api.md)** - REST API reference (TODO)
+- **[NEAR FT Reference Implementation](https://github.com/near-examples/FT)** - Canonical NEP-141 contract spec
+- **[near-ft-helper Sandbox Toolkit](https://github.com/Psianturi/near-ft-helper)** - Helper scripts for provisioning sandbox accounts and keys
