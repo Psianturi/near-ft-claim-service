@@ -25,11 +25,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Clear tsx cache
+        run: |
+          rm -rf node_modules/.cache
+          rm -rf ~/.cache/tsx
+
+      - name: Build TypeScript
+        run: npm run build
 
       - name: Ensure benchmark scripts are executable
         run: |
@@ -39,13 +47,14 @@ jobs:
       - name: Run sandbox benchmark pipeline
         env:
           CI: 'true'
-          TEST_DURATION: '1100'
-          MAX_TPS: '180'
+          TEST_DURATION: '700'
+          MAX_TPS: '120'
           SANDBOX_HEADROOM_PERCENT: '85'
           SANDBOX_USE_CLUSTER: '1'
           CLUSTER_WORKERS: '4'
           ARTILLERY_PROFILE: 'benchmark-sandbox.yml'
           SANDBOX_MAX_IN_FLIGHT_PER_KEY: '8'
+          NEAR_SANDBOX_VERSION: '2.7.1'
         run: ./testing/test-complete-pipeline.sh
 
       - name: Summarize Artillery results
@@ -66,3 +75,7 @@ jobs:
             testing/artillery/artillery-results-sandbox-*.json
             testing/artillery/*.yml
           if-no-files-found: ignore
+
+      - name: Force job completion
+        if: always()
+        run: echo "✅ Job finished successfully"

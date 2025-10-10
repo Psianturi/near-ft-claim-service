@@ -76,3 +76,6 @@ playwright-report/
 test-results/
 blob-report/
 *.last-run.json
+
+# Personal documentation (private)
+docs/
