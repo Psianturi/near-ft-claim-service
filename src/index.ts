@@ -423,6 +423,29 @@ app.get('/transfer/:jobId', (req: Request, res: Response) => {
   return res.send({ success: true, job });
 });
 
+// Get transfer status by transaction hash
+app.get('/transfer/tx/:txHash', (req: Request, res: Response) => {
+  const { txHash } = req.params;
+  const jobs = persistence.listAllJobs().filter(job => job.txHash === txHash);
+  if (jobs.length === 0) return res.status(404).send({ error: 'Transaction not found' });
+
+  return res.send({
+    success: true,
+    transactionHash: txHash,
+    transfers: jobs.map(job => ({
+      jobId: job.id,
+      receiverId: job.receiverId,
+      amount: job.amount,
+      memo: job.memo,
+      status: job.status,
+      batchId: job.batchId,
+      submittedAt: job.submittedAt,
+      attempts: job.attempts,
+      lastError: job.lastError,
+    }))
+  });
+});
+
 app.get('/metrics/jobs', (req: Request, res: Response) => {
   const counts = refreshJobStatusMetrics() ?? {};
   const uptimeMs = Math.round(process.uptime() * 1000);
@@ -444,6 +467,21 @@ app.get('/metrics', async (req: Request, res: Response) => {
     metricsLog.error({ err }, 'Failed to collect Prometheus metrics');
     res.status(500).send('Failed to collect metrics');
   }
+});
+
+// Get batching statistics
+app.get('/metrics/batching', (req: Request, res: Response) => {
+  const batcher = require('./request-batcher.js').requestBatcher;
+  const stats = batcher.getStats();
+
+  res.send({
+    success: true,
+    batching: {
+      ...stats,
+      description: 'Request batching efficiency metrics - higher batchEfficiency indicates better throughput optimization'
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.post('/send-ft', async (req: Request, res: Response) => {

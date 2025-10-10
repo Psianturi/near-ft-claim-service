@@ -284,7 +284,7 @@ async function processBatch(batch: BatchableTransfer[], batchId: string): Promis
         .map(([receiverId]) => receiverId),
     );
     const plannedDeposits = new Set<string>();
-    const maxActionsPerTx = Math.max(parseInt(process.env.MAX_ACTIONS_PER_TX || '10', 10), 2);
+    const maxActionsPerTx = Math.max(parseInt(process.env.MAX_ACTIONS_PER_TX || '20', 10), 2); // Increased from 10 to 20 for more aggressive batching
 
     type Action = ReturnType<typeof functionCall>;
     type Chunk = {
@@ -461,19 +461,36 @@ export function getPendingJobLimit(): number {
 
 function handleJobFailure(job: JobState, batchId: string, error: unknown, message: string): void {
   const attempts = (job.attempts ?? 0) + 1;
+  const newStatus = attempts < MAX_JOB_ATTEMPTS ? 'queued' : 'failed';
+
   persistence.updateJob(job.id, {
-    status: attempts < MAX_JOB_ATTEMPTS ? 'queued' : 'failed',
+    status: newStatus,
     attempts,
     batchId,
     lastError: message,
+    updatedAt: new Date().toISOString(),
   });
 
   if (attempts < MAX_JOB_ATTEMPTS) {
     const delay = Math.min(JOB_RETRY_BASE_MS * attempts, 5000);
-    log.warn({ jobId: job.id, attempts, delay }, 'Retrying job after failure');
+    log.warn({
+      jobId: job.id,
+      attempts,
+      maxAttempts: MAX_JOB_ATTEMPTS,
+      delay,
+      error: message
+    }, 'Retrying job after failure - durability ensured');
+
     setTimeout(() => queueJob(job), delay);
     return;
   }
+
+  log.error({
+    jobId: job.id,
+    attempts,
+    maxAttempts: MAX_JOB_ATTEMPTS,
+    finalError: message
+  }, 'Job failed permanently - marked as failed for durability');
 
   rejectJob(job.id, createTransferError(message, error));
 }

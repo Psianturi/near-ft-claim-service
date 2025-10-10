@@ -50,7 +50,7 @@ kill_port() {
   local pids
   pids=$(lsof -ti:"$port" || true)
   if [ -n "$pids" ]; then
-    log_info "🔪 Menghentikan proses pada port $port: $pids"
+    log_info "🔪 Killing processes on port $port: $pids"
     kill -9 $pids 2>/dev/null || true
     sleep 2
   fi
@@ -60,7 +60,7 @@ kill_worker_processes() {
   local pids
   pids=$(pgrep -f "run-worker.ts" || true)
   if [ -n "$pids" ]; then
-    log_info "🔪 Menghentikan worker lama: $pids"
+    log_info "🔪 Killing old worker processes: $pids"
     kill $pids 2>/dev/null || true
     sleep 2
   fi
@@ -72,13 +72,13 @@ wait_for_service() {
   local label=${3:-Service}
   for i in $(seq 1 "$max_attempts"); do
     if curl -sS "$url" >/dev/null 2>&1; then
-      log_success "$label siap"
+      log_success "$label is ready"
       return 0
     fi
-    log_info "Menunggu $label... ($i/$max_attempts)"
+    log_info "Waiting for $label... ($i/$max_attempts)"
     sleep 3
   done
-  log_error "$label gagal siap dalam $((max_attempts * 3)) detik"
+  log_error "$label failed to become ready within $((max_attempts * 3)) seconds"
   return 1
 }
 
@@ -317,7 +317,7 @@ EOF
 # -----------------------------------------------------------------------------
 
 if [ "$TESTNET_FORCE_CLEANUP" = "1" ]; then
-  log_info "🧹 Membersihkan proses lokal sebelum start"
+  log_info "🧹 Cleaning up local processes before start"
   kill_port "$PORT"
   kill_worker_processes
 fi

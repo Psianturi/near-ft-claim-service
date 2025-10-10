@@ -21,143 +21,44 @@ log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
-CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-MEM_AVAIL_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo 4096)
-LOAD_AVG_RAW=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo 1.0)
-LOAD_AVG=$LOAD_AVG_RAW
-if ! printf '%s\n' "$LOAD_AVG_RAW" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-    LOAD_AVG=1.0
-fi
-
-log_info "🧠 Auto-tuning environment:"
-log_info "   - CPU cores: ${CPU_CORES}"
-log_info "   - Memory: ${MEM_AVAIL_MB}MB"
-log_info "   - Load average: ${LOAD_AVG}"
-
-if (( CPU_CORES <= 4 )); then
-    AUTO_MAX_TPS=80
-    AUTO_MAX_PENDING_JOBS=60
-elif (( CPU_CORES <= 8 )); then
-    AUTO_MAX_TPS=120
-    AUTO_MAX_PENDING_JOBS=90
-else
-    AUTO_MAX_TPS=200
-    AUTO_MAX_PENDING_JOBS=160
-fi
-
-if command -v bc >/dev/null 2>&1 && [ "$(echo "${LOAD_AVG} > 2.5" | bc -l)" = "1" ]; then
-    AUTO_MAX_TPS=$(( AUTO_MAX_TPS / 2 ))
-    AUTO_MAX_PENDING_JOBS=$(( AUTO_MAX_PENDING_JOBS / 2 ))
-    log_warning "System under load - auto-capping MAX_TPS to ${AUTO_MAX_TPS}"
-fi
-
-export MAX_TPS=${MAX_TPS:-$AUTO_MAX_TPS}
-export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-$AUTO_MAX_PENDING_JOBS}
+# Simplified environment setup - use provided values or defaults
+export MAX_TPS=${MAX_TPS:-65}  # Default to 65 TPS for standard benchmarking
+export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-200}
 export WAIT_UNTIL=${WAIT_UNTIL:-Included}
 
-log_info "   ↳ Auto-set MAX_TPS=${MAX_TPS}, MAX_PENDING_JOBS=${MAX_PENDING_JOBS}, WAIT_UNTIL=${WAIT_UNTIL}"
+log_info "📋 Using configuration:"
+log_info "   - MAX_TPS: ${MAX_TPS}"
+log_info "   - MAX_PENDING_JOBS: ${MAX_PENDING_JOBS}"
+log_info "   - WAIT_UNTIL: ${WAIT_UNTIL}"
 
 SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
 TEST_DURATION=${TEST_DURATION:-600}  # 10 minutes of sustained load for realism
 
-# Derive sensible defaults for MAX_TPS and headroom from the sandbox .env file
-DEFAULT_MAX_TPS=60
-DEFAULT_HEADROOM_PERCENT=85
-SANDBOX_ENV_FILE="$PROJECT_ROOT/.env"
+# Simplified configuration - use provided values with defaults
 
-if [ -f "$SANDBOX_ENV_FILE" ]; then
-    ENV_MAX_TPS=$(grep -E '^MAX_TX_PER_SECOND=' "$SANDBOX_ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//' | sed 's/[[:space:]]*#.*$//' | tr -d '"' | tr -d '\r' | xargs || true)
-    if [[ "$ENV_MAX_TPS" =~ ^[0-9]+$ ]] && [ "$ENV_MAX_TPS" -gt 0 ]; then
-        DEFAULT_MAX_TPS=$ENV_MAX_TPS
-    fi
-
-    ENV_HEADROOM=$(grep -E '^ARTILLERY_HEADROOM_PERCENT=' "$SANDBOX_ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//' | sed 's/[[:space:]]*#.*$//' | tr -d '"' | tr -d '\r' | xargs || true)
-    if [[ "$ENV_HEADROOM" =~ ^[0-9]+$ ]] && [ "$ENV_HEADROOM" -ge 10 ] && [ "$ENV_HEADROOM" -le 100 ]; then
-        DEFAULT_HEADROOM_PERCENT=$ENV_HEADROOM
-    fi
-fi
-
-MAX_TPS=${MAX_TPS:-$DEFAULT_MAX_TPS}
-if [ "$MAX_TPS" -lt 1 ]; then
-    MAX_TPS=1
-fi
-
-SANDBOX_BENCHMARK_10M=${SANDBOX_BENCHMARK_10M:-0}
-SANDBOX_SMOKE_TEST=${SANDBOX_SMOKE_TEST:-0}
-SANDBOX_OPTIMIZED=${SANDBOX_OPTIMIZED:-0}
-
-if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
-    SANDBOX_MAX_IN_FLIGHT_PER_KEY_OVERRIDE=${SANDBOX_MAX_IN_FLIGHT_PER_KEY_OVERRIDE:-2}
-    CONCURRENCY_LIMIT_OVERRIDE=${CONCURRENCY_LIMIT_OVERRIDE:-80}
-    MAX_ACTIONS_PER_TX_OVERRIDE=${MAX_ACTIONS_PER_TX_OVERRIDE:-4}
-    MAX_BATCH_SIZE_OVERRIDE=${MAX_BATCH_SIZE_OVERRIDE:-4}
-    MAX_PENDING_JOBS_OVERRIDE=${MAX_PENDING_JOBS_OVERRIDE:-60}
-    MAX_TX_PER_SECOND_OVERRIDE=${MAX_TX_PER_SECOND_OVERRIDE:-18}
-    MAX_TX_PER_KEY_PER_SECOND_OVERRIDE=${MAX_TX_PER_KEY_PER_SECOND_OVERRIDE:-1}
-    GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE=${GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE:-1}
-    PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE=${PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE:-1}
-    QUEUE_SIZE_OVERRIDE=${QUEUE_SIZE_OVERRIDE:-200}
-    WAIT_UNTIL_OVERRIDE=${WAIT_UNTIL_OVERRIDE:-Included}
-fi
+# Simplified profile selection - focus on standard benchmarking
 SANDBOX_USE_CLUSTER=${SANDBOX_USE_CLUSTER:-1}
-CLUSTER_WORKERS=${CLUSTER_WORKERS:-${SANDBOX_CLUSTER_WORKERS:-2}}  # Default 2 workers for stability
+CLUSTER_WORKERS=${CLUSTER_WORKERS:-2}  # Default 2 workers for stability
 SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE:-6}
 export SANDBOX_KEY_POOL_SIZE
 
-# Allow ARTILLERY_CONFIG to override profile selection
+# Use provided Artillery config or default to standard benchmark
 if [ -n "${ARTILLERY_CONFIG:-}" ]; then
     ARTILLERY_PROFILE="$ARTILLERY_CONFIG"
-    log_info "Using custom Artillery config from ARTILLERY_CONFIG: $ARTILLERY_PROFILE"
-elif [ "$SANDBOX_BENCHMARK_10M" = "1" ]; then
-    ARTILLERY_PROFILE="benchmark-sandbox-10m.yml"
-    TEST_DURATION=${TEST_DURATION_OVERRIDE:-600}
-    MAX_TPS=${MAX_TPS_OVERRIDE:-100}
-elif [ "$SANDBOX_SMOKE_TEST" = "1" ]; then
-    ARTILLERY_PROFILE="benchmark-sandbox-smoke.yml"
-    TEST_DURATION=${TEST_DURATION_OVERRIDE:-120}
-    MAX_TPS=${MAX_TPS_OVERRIDE:-40}
-elif [ "$SANDBOX_OPTIMIZED" = "1" ]; then
-    ARTILLERY_PROFILE="benchmark-sandbox-optimized.yml"
-    TEST_DURATION=${TEST_DURATION_OVERRIDE:-360}
-    MAX_TPS=${MAX_TPS_OVERRIDE:-60}
-    SANDBOX_KEY_POOL_SIZE=${SANDBOX_KEY_POOL_SIZE_OVERRIDE:-6}
-    CLUSTER_WORKERS=${CLUSTER_WORKERS_OVERRIDE:-1}
+    log_info "Using custom Artillery config: $ARTILLERY_PROFILE"
 else
-    ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-benchmark-sandbox-50tps.yml}
+    ARTILLERY_PROFILE="benchmark-sandbox.yml"  # Standard benchmark profile
 fi
 
 NEAR_SANDBOX_VERSION=${SANDBOX_VERSION:-${NEAR_SANDBOX_VERSION:-2.7.1}}
 
-HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-$DEFAULT_HEADROOM_PERCENT}
-if [ "$HEADROOM_PERCENT" -lt 10 ] || [ "$HEADROOM_PERCENT" -gt 100 ]; then
-    HEADROOM_PERCENT=$DEFAULT_HEADROOM_PERCENT
-fi
-
+# Simplified TPS calculation with standard headroom
+HEADROOM_PERCENT=${SANDBOX_HEADROOM_PERCENT:-85}
 ARTILLERY_TARGET_TPS=$(( MAX_TPS * HEADROOM_PERCENT / 100 ))
-if [ "$ARTILLERY_TARGET_TPS" -lt 1 ]; then
-    ARTILLERY_TARGET_TPS=$MAX_TPS
-fi
 
-if [ "$ARTILLERY_TARGET_TPS" -gt "$MAX_TPS" ]; then
-    ARTILLERY_TARGET_TPS=$MAX_TPS
-fi
-
-SANDBOX_TARGET_TPS_CAP=${SANDBOX_TARGET_TPS_CAP:-60}
-if [ "$SANDBOX_TARGET_TPS_CAP" -lt 1 ]; then
-    SANDBOX_TARGET_TPS_CAP=150
-fi
-
-if [ "$ARTILLERY_TARGET_TPS" -gt "$SANDBOX_TARGET_TPS_CAP" ]; then
-    log_info "   - Capping sandbox target TPS at $SANDBOX_TARGET_TPS_CAP"
-    ARTILLERY_TARGET_TPS=$SANDBOX_TARGET_TPS_CAP
-fi
-
+# Calculate ramp rates for smooth load increase
 WARMUP_RAMP_TARGET=$(( ARTILLERY_TARGET_TPS / 2 ))
-if [ "$WARMUP_RAMP_TARGET" -lt 10 ]; then
-    WARMUP_RAMP_TARGET=10
-fi
-
 RAMP_START_RATE=$(( WARMUP_RAMP_TARGET > 10 ? WARMUP_RAMP_TARGET : 10 ))
 SUSTAINED_RATE=$ARTILLERY_TARGET_TPS
 
@@ -223,9 +124,7 @@ log_info "   - Headroom: ${HEADROOM_PERCENT}%"
 log_info "   - Artillery sustained target: ${SUSTAINED_RATE} rps"
 log_info "   - Artillery profile: ${ARTILLERY_PROFILE}"
 log_info "   - Cluster mode: ${SANDBOX_USE_CLUSTER} (workers=${CLUSTER_WORKERS:-auto})"
-if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
-    log_info "   - Mode: SANDBOX_OPTIMIZED (keyPool=$SANDBOX_KEY_POOL_SIZE workers=${CLUSTER_WORKERS:-2})"
-fi
+# Standard benchmarking mode
 
 # Step 1: Setup Environment
 log_info "🔧 Setting up environment..."
@@ -537,28 +436,7 @@ if [ "$CONTRACT_READY" = "1" ]; then
         fi
         log_info "   ↳ SANDBOX_MAX_IN_FLIGHT_PER_KEY=${SANDBOX_MAX_IN_FLIGHT_PER_KEY:-unset}"
         log_info "   ↳ MAX_IN_FLIGHT=${MAX_IN_FLIGHT:-unset}"
-        if [ "$SANDBOX_OPTIMIZED" = "1" ]; then
-            export CONCURRENCY_LIMIT=${CONCURRENCY_LIMIT_OVERRIDE}
-            export MAX_ACTIONS_PER_TX=${MAX_ACTIONS_PER_TX_OVERRIDE}
-            export MAX_BATCH_SIZE=${MAX_BATCH_SIZE_OVERRIDE}
-            export MAX_PENDING_JOBS=${MAX_PENDING_JOBS_OVERRIDE}
-            export MAX_TX_PER_SECOND=${MAX_TX_PER_SECOND_OVERRIDE}
-            export MAX_TX_PER_KEY_PER_SECOND=${MAX_TX_PER_KEY_PER_SECOND_OVERRIDE}
-            export GLOBAL_THROTTLE_WINDOW_SEC=${GLOBAL_THROTTLE_WINDOW_SEC_OVERRIDE}
-            export PER_KEY_THROTTLE_WINDOW_SEC=${PER_KEY_THROTTLE_WINDOW_SEC_OVERRIDE}
-            export QUEUE_SIZE=${QUEUE_SIZE_OVERRIDE}
-            export WAIT_UNTIL=${WAIT_UNTIL_OVERRIDE}
-            log_info "   ↳ CONCURRENCY_LIMIT override=${CONCURRENCY_LIMIT}"
-            log_info "   ↳ MAX_ACTIONS_PER_TX override=${MAX_ACTIONS_PER_TX}"
-            log_info "   ↳ MAX_BATCH_SIZE override=${MAX_BATCH_SIZE}"
-            log_info "   ↳ MAX_PENDING_JOBS override=${MAX_PENDING_JOBS}"
-            log_info "   ↳ MAX_TX_PER_SECOND override=${MAX_TX_PER_SECOND}"
-            log_info "   ↳ MAX_TX_PER_KEY_PER_SECOND override=${MAX_TX_PER_KEY_PER_SECOND}"
-            log_info "   ↳ GLOBAL_THROTTLE_WINDOW_SEC override=${GLOBAL_THROTTLE_WINDOW_SEC}"
-            log_info "   ↳ PER_KEY_THROTTLE_WINDOW_SEC override=${PER_KEY_THROTTLE_WINDOW_SEC}"
-            log_info "   ↳ QUEUE_SIZE override=${QUEUE_SIZE}"
-            log_info "   ↳ WAIT_UNTIL override=${WAIT_UNTIL}"
-        fi
+# Standard configuration - no overrides needed
     else
         log_warning "Master key provisioning failed; using existing MASTER_ACCOUNT_PRIVATE_KEYS"
     fi

@@ -7,18 +7,18 @@ config:
   phases:
     - duration: 60
       arrivalRate: 5
-      rampTo: 25
+      rampTo: 35
       name: "Warm-up"
     - duration: 60
-      arrivalRate: 25
-      rampTo: 45
+      arrivalRate: 35
+      rampTo: 63
       name: "Ramp to Target"
-    - duration: 180
-      arrivalRate: 45
+    - duration: 420
+      arrivalRate: 63
       name: "Sustained Load"
     - duration: 30
-      arrivalRate: 45
-      rampTo: 25
+      arrivalRate: 63
+      rampTo: 35
       name: "Cool-down"
   variables:
     receiverId:

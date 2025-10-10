@@ -21,8 +21,8 @@ export type JobState = {
 const jobs = new Map<string, JobState>();
 let eventCounter = 0;
 
-const COMPACT_THRESHOLD = parseInt(process.env.COMPACT_THRESHOLD || '1000', 10);
-const COMPACT_INTERVAL_MS = parseInt(process.env.COMPACT_INTERVAL_MS || String(30 * 60 * 1000), 10); // 30 minutes
+const COMPACT_THRESHOLD = parseInt(process.env.COMPACT_THRESHOLD || '5000', 10); // Increased threshold
+const COMPACT_INTERVAL_MS = parseInt(process.env.COMPACT_INTERVAL_MS || String(60 * 60 * 1000), 10); // 1 hour - reduced frequency
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -34,39 +34,65 @@ function ensureDataDir() {
 }
 
 function appendEvent(obj: any) {
-  const line = JSON.stringify(obj) + '\n';
-  fs.appendFileSync(JOBS_FILE, line, 'utf8');
-  eventCounter++;
-  // Trigger compaction when threshold reached
-  if (eventCounter >= COMPACT_THRESHOLD) {
-    try {
-      compact();
-    } catch (e) {
-      // ignore compaction errors
+  try {
+    ensureDataDir();
+    const line = JSON.stringify(obj) + '\n';
+    fs.appendFileSync(JOBS_FILE, line, 'utf8');
+    eventCounter++;
+
+    // Trigger compaction when threshold reached (but not during high load)
+    if (eventCounter >= COMPACT_THRESHOLD) {
+      // Use setImmediate to avoid blocking the event loop during high load
+      setImmediate(() => {
+        try {
+          compact();
+        } catch (e) {
+          // ignore compaction errors during high load
+        }
+      });
     }
+  } catch (error) {
+    // Log but don't crash - persistence should be best-effort during high load
+    console.warn('Failed to append persistence event:', error);
   }
 }
 
 function compact() {
   // Snapshot latest job states and replace jobs.jsonl atomically
-  ensureDataDir();
-  const tmp = JOBS_FILE + '.tmp';
-  const out = fs.createWriteStream(tmp, { encoding: 'utf8' });
-  for (const job of jobs.values()) {
-    out.write(JSON.stringify({ type: 'job', action: 'create', job }) + '\n');
-  }
-  out.end();
-  out.on('finish', () => {
-    try {
-      const backup = JOBS_FILE + '.old';
-      if (fs.existsSync(backup)) fs.unlinkSync(backup);
-      if (fs.existsSync(JOBS_FILE)) fs.renameSync(JOBS_FILE, backup);
-      fs.renameSync(tmp, JOBS_FILE);
-      eventCounter = 0;
-    } catch (e) {
-      // best-effort
+  try {
+    ensureDataDir();
+    const tmp = JOBS_FILE + '.tmp';
+
+    // Use synchronous operations to avoid stream issues during high load
+    let content = '';
+    for (const job of jobs.values()) {
+      content += JSON.stringify({ type: 'job', action: 'create', job }) + '\n';
     }
-  });
+
+    // Write to temp file synchronously
+    fs.writeFileSync(tmp, content, 'utf8');
+
+    // Atomic rename operations
+    const backup = JOBS_FILE + '.old';
+    if (fs.existsSync(backup)) {
+      try {
+        fs.unlinkSync(backup);
+      } catch (e) {
+        // ignore backup cleanup errors
+      }
+    }
+
+    if (fs.existsSync(JOBS_FILE)) {
+      fs.renameSync(JOBS_FILE, backup);
+    }
+
+    fs.renameSync(tmp, JOBS_FILE);
+    eventCounter = 0;
+
+  } catch (error) {
+    // Log but don't crash - compaction is best-effort
+    console.warn('Persistence compaction failed:', error);
+  }
 }
 
 export function rehydrate() {

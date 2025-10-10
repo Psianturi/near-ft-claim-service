@@ -45,12 +45,12 @@ export class RequestBatcher extends EventEmitter {
   constructor() {
     super();
     this.batchWindowMs = parseInt(process.env.BATCH_WINDOW_MS || '600', 10); // 600ms = 1 block time
-    this.maxBatchSize = parseInt(process.env.MAX_BATCH_SIZE || '10', 10); // Max transfers per transaction
-    
+    this.maxBatchSize = parseInt(process.env.MAX_BATCH_SIZE || '15', 10); // Increased: Max transfers per transaction (300 TGas / 30 TGas per transfer = ~10, but we can batch more aggressively)
+
     log.info({
       batchWindowMs: this.batchWindowMs,
       maxBatchSize: this.maxBatchSize,
-    }, 'Request batcher initialized');
+    }, 'Request batcher initialized - optimized for high throughput');
   }
 
   queue(transfer: BatchableTransfer): void {
@@ -108,10 +108,17 @@ export class RequestBatcher extends EventEmitter {
    * Get current statistics
    */
   getStats() {
+    const efficiency = this.stats.batchesSent > 0
+      ? (this.stats.avgBatchSize / this.maxBatchSize * 100).toFixed(1)
+      : '0.0';
+
     return {
       ...this.stats,
       currentBatchSize: this.batch.length,
       hasPendingBatch: this.batch.length > 0,
+      batchEfficiency: `${efficiency}%`, // How full batches are on average
+      batchWindowMs: this.batchWindowMs,
+      maxBatchSize: this.maxBatchSize,
     };
   }
 

@@ -1,8 +1,8 @@
 {
-  "timestamp": "2025-10-10T12:37:25+07:00",
+  "timestamp": "2025-10-11T00:28:25+07:00",
   "near_version": "2.7.1",
-  "target_tps": 51,
-  "test_duration_sec": 360,
-  "result_file": "/mnt/d/POSMPROJECT/BLOCKCHAIN/NEAR/NEARN-FT/ft-claiming-service/testing/artillery/artillery-results-sandbox-20251010-122829.json",
+  "target_tps": 55,
+  "test_duration_sec": 540,
+  "result_file": "/mnt/d/POSMPROJECT/BLOCKCHAIN/NEAR/NEARN-FT/ft-claiming-service/testing/artillery/artillery-results-sandbox-20251011-000704.json",
   "artillery_attempts": 1
 }
