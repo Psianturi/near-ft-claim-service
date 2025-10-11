@@ -5,7 +5,7 @@
 
 A high-performance TypeScript/Express service for distributing NEP-141 tokens on NEAR blockchain. **Optimized for 100+ TPS sustained throughput**, this service handles concurrent transfers efficiently using [@eclipseeer/near-api-ts](https://www.npmjs.com/package/@eclipseeer/near-api-ts) with advanced key pool management and throttling.
 
-**✨ Key Features:**
+**Key Features:**
 - 🚀 **100+ TPS capability** - Sustained for 10+ minutes (60,000+ transfers)
 - 🔄 **Unified API** - Single codebase for sandbox, testnet, and mainnet
 - ♻️ **Durable Transfer Coordinator** - Persistence-backed batching with automatic retries and recovery
@@ -439,32 +439,41 @@ ENABLE_MEMORY_MONITORING=true  # Memory tracking
 ## Repository Layout
 
 ```
-ft/                          # NEP-141 FT contract (Rust)
-├── src/lib.rs              # Smart contract implementation
-└── target/                 # Compiled WASM
-
-ft-claiming-service/        # Main API service
-├── src/
-│   ├── index.ts           # Express API server & coordinator entrypoint
-│   ├── transfer-coordinator.ts # Persistence-backed batching + retries
-│   ├── request-batcher.ts # Batching utilities
-│   ├── persistence-jsonl.ts# Durable JSONL job store
-│   ├── reconciler.ts      # Reconcile submitted transactions
-│   ├── worker.ts          # Periodically requeues persisted jobs
-│   ├── near.ts            # NEAR connection manager & key leasing
-│   └── key-throttle.ts    # Global & per-key throttles
-├── testing/
-│   └── artillery/         # Load test configurations
-│       └── benchmark-sandbox.yml  # 10-min 100 TPS test
-├── docs/
-│   ├── PERFORMANCE_OPTIMIZATION.md  # 🚀 Performance guide
-│   ├── testing.md         # Testing strategy
-│   └── ci.md             # CI/CD documentation
-└── examples/
-   └── send-ft-frontend/  # Demo UI
-
-near-ft-helper/            # Sandbox deployment helper
-└── deploy.js             # Automated sandbox setup
+near-ft-claim-service/      # Root repository
+├── ft/                     # NEP-141 FT contract (Rust)
+│   ├── src/lib.rs         # Smart contract implementation
+│   └── target/            # Compiled WASM
+│
+├── ft-claiming-service/   # Main API service
+│   ├── src/
+│   │   ├── index.ts           # Express API server & coordinator entrypoint
+│   │   ├── transfer-coordinator.ts # Persistence-backed batching + retries
+│   │   ├── request-batcher.ts # Batching utilities
+│   │   ├── persistence-jsonl.ts# Durable JSONL job store
+│   │   ├── reconciler.ts      # Reconcile submitted transactions
+│   │   ├── worker.ts          # Periodically requeues persisted jobs
+│   │   ├── near.ts            # NEAR connection manager & key leasing
+│   │   └── key-throttle.ts    # Global & per-key throttles
+│   ├── scripts/
+│   │   └── testnet-setup/     # Testnet account setup scripts
+│   │       ├── README.md      # Testnet setup documentation
+│   │       ├── check-account.mjs # Account inspection utility
+│   │       ├── create-benchmark-account.mjs # Automated account creation
+│   │       ├── deploy-ft-to-benchmark.mjs # Contract deployment
+│   │       ├── generate-access-keys.mjs # Function-call key generation
+│   │       └── generate-full-access-keys.mjs # Full-access key generation
+│   ├── testing/
+│   │   └── artillery/         # Load test configurations
+│   │       └── benchmark-sandbox.yml  # 10-min 100 TPS test
+│   ├── docs/
+│   │   ├── PERFORMANCE_OPTIMIZATION.md  # 🚀 Performance guide
+│   │   ├── testing.md         # Testing strategy
+│   │   └── ci.md             # CI/CD documentation
+│   └── examples/
+│       └── send-ft-frontend/  # Demo UI
+│
+└── near-ft-helper/        # Sandbox deployment helper
+    └── deploy.js          # Automated sandbox setup
 ```
 
 ## Documentation
