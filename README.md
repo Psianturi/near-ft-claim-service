@@ -1,84 +1,76 @@
 # NEAR Fungible Token Claiming Service
 
 [![CI](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml)
-[![Sandbox Benchmark](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml)
+[![Benchmark](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml)
 
-A high-performance TypeScript/Express service for distributing NEP-141 tokens on NEAR blockchain. **Optimized for 100+ TPS sustained throughput**, this service handles concurrent transfers efficiently using [@eclipseeer/near-api-ts](https://www.npmjs.com/package/@eclipseeer/near-api-ts) with advanced key pool management and throttling.
+High-performance service for distributing NEP-141 tokens on NEAR blockchain. Handles concurrent transfers, batching, durable job tracking, and benchmarking for sandbox & testnet.
 
-**Key Features:**
-- 🚀 **100+ TPS capability** - Sustained for 10+ minutes (60,000+ transfers)
-- 🔄 **Unified API** - Single codebase for sandbox, testnet, and mainnet
-- ♻️ **Durable Transfer Coordinator** - Persistence-backed batching with automatic retries and recovery
-- 🔑 **Smart Key Pooling** - Automatic rotation and nonce conflict prevention
-- 📊 **Comprehensive Benchmarking** - Artillery load tests and CI/CD integration
-- 🎯 **Production Ready** - Battle-tested with extensive documentation
-
----
-
-## Overview
-
-This service is designed to meet NEAR community performance targets for high-throughput token distribution:
-
-- **REST API** – `/send-ft` endpoint handles single or batched NEP-141 transfers
-- **Key Pool Management** – Rotates through multiple access keys to avoid nonce conflicts
-- **Advanced Throttling** – Configurable global and per-key rate limits
-- **Durable Coordinator** – Persistence-backed batching, retries, and resumable jobs
-- **Environment Support** – Unified implementation for sandbox, testnet, and mainnet
-- **Performance Tooling** – Artillery benchmarks, CI/CD integration, real-time metrics
-
-
-
-**📚 See [Performance Optimization Guide](docs/PERFORMANCE_OPTIMIZATION.md) for detailed setup.**
+## Features
+- 🚀 30+ TPS sustained (sandbox/testnet)
+- Durable batching & job recovery
+- Key pool management & nonce conflict prevention
+- REST API `/send-ft` for single/batch transfer
+- Artillery benchmark integration
 
 ---
 
-## Quick start checklist
+## Lifecycle Setup (Developer)
 
-1. **Clone & enter the workspace.**
-   ```bash
-   git clone https://github.com/Psianturi/near-ft-claim-service.git
-   cd near-ft-claim-service/ft-claiming-service
-   ```
-2. **Match the toolchain and install dependencies.**
-   ```bash
-   nvm install 22
-   nvm use 22
-   npm install
-   npx playwright install --with-deps
-   ```
-3. **Configure credentials.** Copy `.env.example` to `.env` (sandbox) and/or `.env.testnet`, then fill in NEAR accounts, private keys, and contract IDs.
-4. **Boot the API + worker.** Use two terminals for sandbox or testnet:
-      ```bash
-      # Terminal 1
-      NEAR_ENV=sandbox npm run start:sandbox
+### 1. Contract (ft)
+- Clone [near-examples/FT](https://github.com/near-examples/FT)
+- Build: `cargo build --target wasm32-unknown-unknown --release`
+- Deploy: `near deploy ...` (sandbox/testnet)
 
-      # Terminal 2
-      NEAR_ENV=sandbox npm run run:worker:sandbox
-      ```
-      Swap `sandbox` with `testnet` to hit real RPCs. The API handles new requests while the worker periodically replays persisted jobs so batches survive restarts.
-5. **Smoke-test the endpoint.** Replace `your-receiver.testnet` with an account that has registered storage on the FT contract.
-   ```bash
-   curl http://127.0.0.1:3000/health
-   curl -X POST http://127.0.0.1:3000/send-ft \
-     -H 'Content-Type: application/json' \
-       -d '{"receiverId":"your-receiver.testnet","amount":"1000000"}'
-   ```
-       Successful requests return the durable job record together with the transaction hash:
-       ```json
-       {
-          "success": true,
-          "message": "FT transfer executed successfully",
-          "jobId": "job-20250213T123456.789Z-abc123",
-          "transactionHash": "5waf...9sV",
-          "receiverId": "your-receiver.testnet",
-          "amount": "1000000",
-          "status": "submitted",
-          "batchId": "batch-20250213-1",
-          "submittedAt": "2025-02-13T12:34:56.789Z"
-       }
-       ```
-6. **Run the quality gates (same as CI).**
-   ```bash
+### 2. near-ft-helper
+- Clone [Psianturi/near-ft-helper](https://github.com/Psianturi/near-ft-helper)
+- Bootstrap sandbox/testnet, generate key pool, deploy contract
+- Command: `node deploy.js` (sandbox) / `node deploy-testnet.js` (testnet)
+
+### 3. ft-claiming-service
+- Clone [Psianturi/near-ft-claim-service](https://github.com/Psianturi/near-ft-claim-service)
+- Install: `npm install`
+- Configure `.env`/`.env.testnet`/`.env.testnet.backup`
+- Start API & worker:
+  - Sandbox: `npm run start:sandbox` + `npm run run:worker:sandbox`
+  - Testnet: `npm run start:testnet` + `npm run run:worker:testnet`
+- Benchmark:
+  - Sandbox: `./testing/test-complete-pipeline.sh`
+  - Testnet: `./testing/test-complete-pipeline-testnet.sh`
+
+---
+
+## Quick Test (Public User)
+
+### Sandbox
+1. Copy `.env.example` ke `.env`
+2. Jalankan API & worker (sandbox)
+3. Jalankan benchmark: `./testing/test-complete-pipeline.sh`
+4. Cek hasil di `testing/pipeline-summary.json`
+
+### Testnet
+1. Copy `.env.example` to `.env.testnet` and fill with your testnet credentials
+2. Start API & worker (testnet)
+3. Run benchmark: `./testing/test-complete-pipeline-testnet.sh`
+4. Check results in `testing/pipeline-summary.json`
+
+---
+
+## Benchmark & Analysis
+- Hasil: `testing/pipeline-summary.json`
+- Success: Success rate > 95%, latency < 10s, error minimal
+- Tuning: Atur batch/concurrency/key pool di `.env.*` jika error tinggi
+
+---
+
+## Documentation & Links
+- [Benchmark Quick Reference](docs/BENCHMARK_QUICK_REFERENCE.md)
+- [Workflow Analysis](docs/WORKFLOW_SANDBOX_BENCHMARK_ANALYSIS.md)
+- [Testing Strategy](docs/testing.md)
+
+---
+
+## License
+Apache-2.0
    npm run typecheck && npm run security && npm run test:frontend
    ```
 7. **Exercise blockchain flows.** Kick off the sandbox or testnet suites when you need end-to-end coverage:
@@ -269,7 +261,6 @@ The same health and transfer endpoints apply; the service picks up `.env.testnet
 | `npm run security` | Audit dependencies (fails on critical) |
 | `npm run test:frontend` | Playwright UI tests |
 | `npm run test:sandbox` | Sandbox integration tests |
-| `npm run test:testnet` | Testnet integration tests |
 
 ### Benchmark Commands
 
@@ -331,15 +322,6 @@ npx artillery run testing/artillery/benchmark-sandbox.yml \
   --output test-results/benchmark-10min-$(date +%Y%m%d-%H%M%S).json
 ```
 
-**Expected Results:**
-```
-Total Requests:   60,000+
-Success Rate:     >95%
-Mean TPS:         100+
-Duration:         600s (10 minutes sustained)
-P95 Latency:      <5s
-P99 Latency:      <10s
-```
 
 📚 **Detailed guide**: [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)
 
@@ -436,44 +418,23 @@ ENABLE_MEMORY_MONITORING=true  # Memory tracking
 
 ---
 
+
 ## Repository Layout
 
 ```
-near-ft-claim-service/      # Root repository
-├── ft/                     # NEP-141 FT contract (Rust)
-│   ├── src/lib.rs         # Smart contract implementation
-│   └── target/            # Compiled WASM
+├── ft/                       # NEP-141 FT contract (Rust)
+│   ├── src/                  # Contract source code
+│   └── target/               # Compiled WASM
 │
-├── ft-claiming-service/   # Main API service
-│   ├── src/
-│   │   ├── index.ts           # Express API server & coordinator entrypoint
-│   │   ├── transfer-coordinator.ts # Persistence-backed batching + retries
-│   │   ├── request-batcher.ts # Batching utilities
-│   │   ├── persistence-jsonl.ts# Durable JSONL job store
-│   │   ├── reconciler.ts      # Reconcile submitted transactions
-│   │   ├── worker.ts          # Periodically requeues persisted jobs
-│   │   ├── near.ts            # NEAR connection manager & key leasing
-│   │   └── key-throttle.ts    # Global & per-key throttles
-│   ├── scripts/
-│   │   └── testnet-setup/     # Testnet account setup scripts
-│   │       ├── README.md      # Testnet setup documentation
-│   │       ├── check-account.mjs # Account inspection utility
-│   │       ├── create-benchmark-account.mjs # Automated account creation
-│   │       ├── deploy-ft-to-benchmark.mjs # Contract deployment
-│   │       ├── generate-access-keys.mjs # Function-call key generation
-│   │       └── generate-full-access-keys.mjs # Full-access key generation
-│   ├── testing/
-│   │   └── artillery/         # Load test configurations
-│   │       └── benchmark-sandbox.yml  # 10-min 100 TPS test
-│   ├── docs/
-│   │   ├── PERFORMANCE_OPTIMIZATION.md  # 🚀 Performance guide
-│   │   ├── testing.md         # Testing strategy
-│   │   └── ci.md             # CI/CD documentation
-│   └── examples/
-│       └── send-ft-frontend/  # Demo UI
+├── near-ft-helper/           # Sandbox/testnet helper scripts
+│   └── deploy.js             # Automated setup
 │
-└── near-ft-helper/        # Sandbox deployment helper
-    └── deploy.js          # Automated sandbox setup
+├── ft-claiming-service/      # Main API service
+│   ├── src/                  # API, coordinator, batching, persistence
+│   ├── scripts/              # Testnet setup scripts
+│   ├── testing/              # Artillery configs & pipeline scripts
+│   ├── docs/                 # Documentation
+│   └── examples/             # Demo frontend
 ```
 
 ## Documentation
