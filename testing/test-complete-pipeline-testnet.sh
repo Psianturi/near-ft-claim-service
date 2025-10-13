@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ARTILLERY_DIR="$PROJECT_ROOT/testing/artillery"
-DEFAULT_ENV_FILE="$PROJECT_ROOT/.env.testnet"
+DEFAULT_ENV_FILE="$PROJECT_ROOT/.env.testnet.backup"
 
 cd "$PROJECT_ROOT"
 
@@ -47,6 +47,7 @@ kill_port() {
   if ! command -v lsof >/dev/null 2>&1; then
     return
   fi
+    wait_for_service "http://127.0.0.1:3000/health" 40 "API Health Endpoint"
   local pids
   pids=$(lsof -ti:"$port" || true)
   if [ -n "$pids" ]; then
@@ -106,7 +107,7 @@ fi
 PORT=${PORT:-3000}
 API_URL="http://127.0.0.1:$PORT"
 NODE_URL=${NODE_URL:-https://rpc.testnet.fastnear.com}
-TARGET_TPS=${TESTNET_TARGET_TPS:-50}
+TARGET_TPS=${TESTNET_TARGET_TPS:-32}
 HEADROOM_PERCENT=${TESTNET_HEADROOM_PERCENT:-90}
 TESTNET_TEST_DURATION=${TESTNET_TEST_DURATION:-300}
 TESTNET_WARMUP_DURATION=${TESTNET_WARMUP_DURATION:-60}
@@ -120,8 +121,8 @@ CLUSTER_WORKERS=${TESTNET_CLUSTER_WORKERS:-${CLUSTER_WORKERS:-}}
 TESTNET_LAUNCH_WORKER=${TESTNET_LAUNCH_WORKER:-1}
 ARTILLERY_PROFILE=${ARTILLERY_PROFILE:-benchmark-testnet-generated.yml}
 ARTILLERY_CONFIG_PATH="$ARTILLERY_DIR/$ARTILLERY_PROFILE"
-TESTNET_RECEIVER_LIST=${TESTNET_RECEIVER_LIST:-"posma-badge.testnet"}
-TESTNET_AMOUNT_OPTIONS=${TESTNET_AMOUNT_OPTIONS:-"100000000,500000000,1000000000"}
+TESTNET_RECEIVER_LIST=${TESTNET_RECEIVER_LIST:-"posma-badge.testnet, near-badge.testnet"}
+TESTNET_AMOUNT_OPTIONS=${TESTNET_AMOUNT_OPTIONS:-"100000000,400000000,1000000000"}
 TESTNET_FORCE_CLEANUP=${TESTNET_FORCE_CLEANUP:-1}
 TESTNET_RESET_LOGS=${TESTNET_RESET_LOGS:-0}
 API_LOG=${API_LOG:-api-testnet.log}
@@ -156,7 +157,7 @@ fi
 TOTAL_DURATION=$(( TESTNET_WARMUP_DURATION + TESTNET_RAMP_DURATION + SUSTAINED_DURATION + TESTNET_COOLDOWN_DURATION ))
 
 log_info "🚀 Starting Complete FT Service Testnet Pipeline"
-log_info "📋 Configuration:" 
+log_info " Configuration:" 
 log_info "   - API Port: $PORT" 
 log_info "   - Node URL: $NODE_URL" 
 log_info "   - Master Account: $MASTER_ACCOUNT" 

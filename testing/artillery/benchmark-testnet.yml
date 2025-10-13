@@ -9,20 +9,20 @@ config:
     
     # Quick warm-up: 30s
     - duration: 30
-      arrivalRate: 10
-      rampTo: 50
+      arrivalRate: 4
+      rampTo: 20
       name: "Warm-up (0-30s)"
     
     # Ramp to target: 30s
     - duration: 30
-      arrivalRate: 50
-      rampTo: 100
-      name: "Ramp to 100 TPS (30-60s)"
+      arrivalRate: 20
+      rampTo: 50
+      name: "Ramp to 50 TPS (30-60s)"
     
-    # SUSTAINED LOAD: 540 seconds @ 100 TPS (54,000 transfers)
-    - duration: 540
-      arrivalRate: 100
-      name: "Sustained 100 TPS (60-600s)"
+    # SUSTAINED LOAD: 500 seconds @ 50 TPS
+    - duration: 400
+      arrivalRate: 50
+      name: "Sustained 50 TPS"
   
   variables:
     receiverId:

@@ -1,0 +1,1395 @@
+{
+  "aggregate": {
+    "counters": {
+      "vusers.created_by_name.Send FT Token": 45688,
+      "vusers.created": 57150,
+      "http.requests": 57150,
+      "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 51476,
+      "errors.ECONNREFUSED": 57150,
+      "vusers.failed": 57150,
+      "vusers.created_by_name.Batch Transfer": 5788,
+      "vusers.created_by_name.Health Check": 5674,
+      "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 5674
+    },
+    "rates": {
+      "http.request_rate": 100
+    },
+    "firstCounterAt": 1760281211010,
+    "lastCounterAt": 1760281776485,
+    "firstMetricAt": 1760281211010,
+    "lastMetricAt": 1760281776485,
+    "period": 1760281770000,
+    "summaries": {},
+    "histograms": {}
+  },
+  "intermediate": [
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 115,
+        "vusers.created": 143,
+        "http.requests": 143,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 127,
+        "errors.ECONNREFUSED": 143,
+        "vusers.failed": 143,
+        "vusers.created_by_name.Batch Transfer": 12,
+        "vusers.created_by_name.Health Check": 16,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 16
+      },
+      "rates": {
+        "http.request_rate": 18
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281211010,
+      "lastCounterAt": 1760281219951,
+      "firstMetricAt": 1760281211010,
+      "lastMetricAt": 1760281219951,
+      "period": "1760281210000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 235,
+        "vusers.created": 291,
+        "http.requests": 291,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 265,
+        "errors.ECONNREFUSED": 291,
+        "vusers.failed": 291,
+        "vusers.created_by_name.Batch Transfer": 30,
+        "vusers.created_by_name.Health Check": 26,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 26
+      },
+      "rates": {
+        "http.request_rate": 31
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281220000,
+      "lastCounterAt": 1760281229980,
+      "firstMetricAt": 1760281220000,
+      "lastMetricAt": 1760281229980,
+      "period": "1760281220000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 325,
+        "vusers.created": 428,
+        "http.requests": 428,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 370,
+        "errors.ECONNREFUSED": 428,
+        "vusers.failed": 428,
+        "vusers.created_by_name.Health Check": 58,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 58,
+        "vusers.created_by_name.Batch Transfer": 45
+      },
+      "rates": {
+        "http.request_rate": 43
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281230011,
+      "lastCounterAt": 1760281239994,
+      "firstMetricAt": 1760281230011,
+      "lastMetricAt": 1760281239994,
+      "period": "1760281230000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 494,
+        "vusers.created": 621,
+        "http.requests": 621,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 560,
+        "errors.ECONNREFUSED": 620,
+        "vusers.failed": 620,
+        "vusers.created_by_name.Health Check": 60,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 60,
+        "vusers.created_by_name.Batch Transfer": 67
+      },
+      "rates": {
+        "http.request_rate": 63
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281240012,
+      "lastCounterAt": 1760281249999,
+      "firstMetricAt": 1760281240012,
+      "lastMetricAt": 1760281249999,
+      "period": "1760281240000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 80,
+        "vusers.created": 769,
+        "http.requests": 768,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 80,
+        "errors.ECONNREFUSED": 769,
+        "vusers.failed": 769,
+        "vusers.created_by_name.Send FT Token": 611,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 689,
+        "vusers.created_by_name.Batch Transfer": 78
+      },
+      "rates": {
+        "http.request_rate": 78
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281250000,
+      "lastCounterAt": 1760281259998,
+      "firstMetricAt": 1760281250000,
+      "lastMetricAt": 1760281259998,
+      "period": "1760281250000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 755,
+        "vusers.created": 938,
+        "http.requests": 939,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 849,
+        "errors.ECONNREFUSED": 939,
+        "vusers.failed": 939,
+        "vusers.created_by_name.Batch Transfer": 93,
+        "vusers.created_by_name.Health Check": 90,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 90
+      },
+      "rates": {
+        "http.request_rate": 95
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281260000,
+      "lastCounterAt": 1760281269980,
+      "firstMetricAt": 1760281260000,
+      "lastMetricAt": 1760281269980,
+      "period": "1760281260000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 102,
+        "vusers.created": 1114,
+        "http.requests": 1114,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 102,
+        "errors.ECONNREFUSED": 1114,
+        "vusers.failed": 1114,
+        "vusers.created_by_name.Send FT Token": 882,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1012,
+        "vusers.created_by_name.Batch Transfer": 130
+      },
+      "rates": {
+        "http.request_rate": 114
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281270006,
+      "lastCounterAt": 1760281279994,
+      "firstMetricAt": 1760281270006,
+      "lastMetricAt": 1760281279994,
+      "period": "1760281270000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 810,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 909,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 99,
+        "vusers.created_by_name.Health Check": 91,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 91
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281280022,
+      "lastCounterAt": 1760281289995,
+      "firstMetricAt": 1760281280022,
+      "lastMetricAt": 1760281289995,
+      "period": "1760281280000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 790,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 910,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 120,
+        "vusers.created_by_name.Health Check": 90,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 90
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281290022,
+      "lastCounterAt": 1760281299995,
+      "firstMetricAt": 1760281290022,
+      "lastMetricAt": 1760281299995,
+      "period": "1760281290000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 939,
+        "vusers.created": 1163,
+        "http.requests": 1163,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1046,
+        "errors.ECONNREFUSED": 1163,
+        "vusers.failed": 1163,
+        "vusers.created_by_name.Batch Transfer": 107,
+        "vusers.created_by_name.Health Check": 117,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 117
+      },
+      "rates": {
+        "http.request_rate": 116
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281300021,
+      "lastCounterAt": 1760281309994,
+      "firstMetricAt": 1760281300021,
+      "lastMetricAt": 1760281309994,
+      "period": "1760281300000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 807,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 917,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 110,
+        "vusers.created_by_name.Health Check": 83,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 83
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281310017,
+      "lastCounterAt": 1760281319993,
+      "firstMetricAt": 1760281310017,
+      "lastMetricAt": 1760281319993,
+      "period": "1760281310000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 797,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 894,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 106,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 106,
+        "vusers.created_by_name.Batch Transfer": 97
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281320016,
+      "lastCounterAt": 1760281329994,
+      "firstMetricAt": 1760281320016,
+      "lastMetricAt": 1760281329994,
+      "period": "1760281320000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 946,
+        "vusers.created": 1196,
+        "http.requests": 1196,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1064,
+        "errors.ECONNREFUSED": 1196,
+        "vusers.failed": 1196,
+        "vusers.created_by_name.Batch Transfer": 118,
+        "vusers.created_by_name.Health Check": 132,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 132
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281330016,
+      "lastCounterAt": 1760281339994,
+      "firstMetricAt": 1760281330016,
+      "lastMetricAt": 1760281339994,
+      "period": "1760281330000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Batch Transfer": 113,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 902,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Send FT Token": 789,
+        "vusers.created_by_name.Health Check": 98,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 98
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281340007,
+      "lastCounterAt": 1760281349995,
+      "firstMetricAt": 1760281340007,
+      "lastMetricAt": 1760281349995,
+      "period": "1760281340000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 808,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 905,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 95,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 95,
+        "vusers.created_by_name.Batch Transfer": 97
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281350007,
+      "lastCounterAt": 1760281359995,
+      "firstMetricAt": 1760281350007,
+      "lastMetricAt": 1760281359995,
+      "period": "1760281350000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 985,
+        "vusers.created": 1200,
+        "http.requests": 1200,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1099,
+        "errors.ECONNREFUSED": 1200,
+        "vusers.failed": 1200,
+        "vusers.created_by_name.Health Check": 101,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 101,
+        "vusers.created_by_name.Batch Transfer": 114
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281360007,
+      "lastCounterAt": 1760281369990,
+      "firstMetricAt": 1760281360007,
+      "lastMetricAt": 1760281369990,
+      "period": "1760281360000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 816,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 909,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 93,
+        "vusers.created_by_name.Health Check": 91,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 91
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281370002,
+      "lastCounterAt": 1760281379990,
+      "firstMetricAt": 1760281370002,
+      "lastMetricAt": 1760281379990,
+      "period": "1760281370000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 817,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 909,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 92,
+        "vusers.created_by_name.Health Check": 91,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 91
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281380004,
+      "lastCounterAt": 1760281389991,
+      "firstMetricAt": 1760281380004,
+      "lastMetricAt": 1760281389991,
+      "period": "1760281380000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Batch Transfer": 114,
+        "vusers.created": 1189,
+        "http.requests": 1189,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1081,
+        "errors.ECONNREFUSED": 1187,
+        "vusers.failed": 1187,
+        "vusers.created_by_name.Send FT Token": 968,
+        "vusers.created_by_name.Health Check": 107,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 106
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281390002,
+      "lastCounterAt": 1760281399999,
+      "firstMetricAt": 1760281390002,
+      "lastMetricAt": 1760281399999,
+      "period": "1760281390000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 803,
+        "vusers.created": 1001,
+        "http.requests": 1001,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 899,
+        "errors.ECONNREFUSED": 1002,
+        "vusers.failed": 1002,
+        "vusers.created_by_name.Health Check": 102,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 103,
+        "vusers.created_by_name.Batch Transfer": 96
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281400000,
+      "lastCounterAt": 1760281409999,
+      "firstMetricAt": 1760281400000,
+      "lastMetricAt": 1760281409999,
+      "period": "1760281400000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 800,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 906,
+        "errors.ECONNREFUSED": 1001,
+        "vusers.failed": 1001,
+        "vusers.created_by_name.Batch Transfer": 105,
+        "vusers.created_by_name.Health Check": 95,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 95
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281410000,
+      "lastCounterAt": 1760281419999,
+      "firstMetricAt": 1760281410000,
+      "lastMetricAt": 1760281419999,
+      "period": "1760281410000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 934,
+        "vusers.created": 1183,
+        "http.requests": 1183,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1057,
+        "errors.ECONNREFUSED": 1182,
+        "vusers.failed": 1182,
+        "vusers.created_by_name.Health Check": 125,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 125,
+        "vusers.created_by_name.Batch Transfer": 124
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281420012,
+      "lastCounterAt": 1760281429999,
+      "firstMetricAt": 1760281420012,
+      "lastMetricAt": 1760281429999,
+      "period": "1760281420000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Batch Transfer": 105,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 883,
+        "errors.ECONNREFUSED": 1001,
+        "vusers.failed": 1001,
+        "vusers.created_by_name.Health Check": 118,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 118,
+        "vusers.created_by_name.Send FT Token": 777
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281430000,
+      "lastCounterAt": 1760281439998,
+      "firstMetricAt": 1760281430000,
+      "lastMetricAt": 1760281439998,
+      "period": "1760281430000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 788,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 896,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 104,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 104,
+        "vusers.created_by_name.Batch Transfer": 108
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281440008,
+      "lastCounterAt": 1760281449999,
+      "firstMetricAt": 1760281440008,
+      "lastMetricAt": 1760281449999,
+      "period": "1760281440000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 125,
+        "vusers.created": 1193,
+        "http.requests": 1193,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 125,
+        "errors.ECONNREFUSED": 1193,
+        "vusers.failed": 1193,
+        "vusers.created_by_name.Send FT Token": 970,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1068,
+        "vusers.created_by_name.Batch Transfer": 98
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281450008,
+      "lastCounterAt": 1760281459995,
+      "firstMetricAt": 1760281450008,
+      "lastMetricAt": 1760281459995,
+      "period": "1760281450000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 791,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 892,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 101,
+        "vusers.created_by_name.Health Check": 108,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 108
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281460005,
+      "lastCounterAt": 1760281469996,
+      "firstMetricAt": 1760281460005,
+      "lastMetricAt": 1760281469996,
+      "period": "1760281460000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 794,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 902,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 108,
+        "vusers.created_by_name.Health Check": 98,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 98
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281470005,
+      "lastCounterAt": 1760281479996,
+      "firstMetricAt": 1760281470005,
+      "lastMetricAt": 1760281479996,
+      "period": "1760281470000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 937,
+        "vusers.created": 1192,
+        "http.requests": 1191,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1054,
+        "errors.ECONNREFUSED": 1191,
+        "vusers.failed": 1191,
+        "vusers.created_by_name.Batch Transfer": 117,
+        "vusers.created_by_name.Health Check": 138,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 137
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281480004,
+      "lastCounterAt": 1760281489998,
+      "firstMetricAt": 1760281480004,
+      "lastMetricAt": 1760281489998,
+      "period": "1760281480000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 808,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 902,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 97,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 98,
+        "vusers.created_by_name.Batch Transfer": 95
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281490000,
+      "lastCounterAt": 1760281499998,
+      "firstMetricAt": 1760281490000,
+      "lastMetricAt": 1760281499998,
+      "period": "1760281490000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 793,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 904,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 96,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 96,
+        "vusers.created_by_name.Batch Transfer": 111
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281500000,
+      "lastCounterAt": 1760281509998,
+      "firstMetricAt": 1760281500000,
+      "lastMetricAt": 1760281509998,
+      "period": "1760281500000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 955,
+        "vusers.created": 1193,
+        "http.requests": 1193,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1083,
+        "errors.ECONNREFUSED": 1193,
+        "vusers.failed": 1193,
+        "vusers.created_by_name.Batch Transfer": 128,
+        "vusers.created_by_name.Health Check": 110,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 110
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281510000,
+      "lastCounterAt": 1760281519998,
+      "firstMetricAt": 1760281510000,
+      "lastMetricAt": 1760281519998,
+      "period": "1760281510000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 788,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 899,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 101,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 101,
+        "vusers.created_by_name.Batch Transfer": 111
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281520000,
+      "lastCounterAt": 1760281529998,
+      "firstMetricAt": 1760281520000,
+      "lastMetricAt": 1760281529998,
+      "period": "1760281520000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Batch Transfer": 96,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 905,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Send FT Token": 809,
+        "vusers.created_by_name.Health Check": 95,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 95
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281530000,
+      "lastCounterAt": 1760281539998,
+      "firstMetricAt": 1760281530000,
+      "lastMetricAt": 1760281539998,
+      "period": "1760281530000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 961,
+        "vusers.created": 1188,
+        "http.requests": 1189,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1078,
+        "errors.ECONNREFUSED": 1189,
+        "vusers.failed": 1189,
+        "vusers.created_by_name.Health Check": 111,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 111,
+        "vusers.created_by_name.Batch Transfer": 116
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281540000,
+      "lastCounterAt": 1760281549979,
+      "firstMetricAt": 1760281540000,
+      "lastMetricAt": 1760281549979,
+      "period": "1760281540000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 75,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 75,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 103,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 925,
+        "vusers.created_by_name.Send FT Token": 822
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281550005,
+      "lastCounterAt": 1760281559979,
+      "firstMetricAt": 1760281550005,
+      "lastMetricAt": 1760281559979,
+      "period": "1760281550000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 109,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 109,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Send FT Token": 800,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 891,
+        "vusers.created_by_name.Batch Transfer": 91
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281560005,
+      "lastCounterAt": 1760281569978,
+      "firstMetricAt": 1760281560005,
+      "lastMetricAt": 1760281569978,
+      "period": "1760281560000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 965,
+        "vusers.created": 1193,
+        "http.requests": 1193,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1068,
+        "errors.ECONNREFUSED": 1193,
+        "vusers.failed": 1193,
+        "vusers.created_by_name.Health Check": 125,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 125,
+        "vusers.created_by_name.Batch Transfer": 103
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281570005,
+      "lastCounterAt": 1760281579975,
+      "firstMetricAt": 1760281570005,
+      "lastMetricAt": 1760281579975,
+      "period": "1760281570000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 97,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 97,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Send FT Token": 820,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 903,
+        "vusers.created_by_name.Batch Transfer": 83
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281580002,
+      "lastCounterAt": 1760281589976,
+      "firstMetricAt": 1760281580002,
+      "lastMetricAt": 1760281589976,
+      "period": "1760281580000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 814,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 906,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 94,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 94,
+        "vusers.created_by_name.Batch Transfer": 92
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281590002,
+      "lastCounterAt": 1760281599976,
+      "firstMetricAt": 1760281590002,
+      "lastMetricAt": 1760281599976,
+      "period": "1760281590000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 138,
+        "vusers.created": 1193,
+        "http.requests": 1193,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 138,
+        "errors.ECONNREFUSED": 1193,
+        "vusers.failed": 1193,
+        "vusers.created_by_name.Send FT Token": 928,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1055,
+        "vusers.created_by_name.Batch Transfer": 127
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281600002,
+      "lastCounterAt": 1760281609993,
+      "firstMetricAt": 1760281600002,
+      "lastMetricAt": 1760281609993,
+      "period": "1760281600000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 94,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 94,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Send FT Token": 785,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 906,
+        "vusers.created_by_name.Batch Transfer": 121
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281610020,
+      "lastCounterAt": 1760281619993,
+      "firstMetricAt": 1760281610020,
+      "lastMetricAt": 1760281619993,
+      "period": "1760281610000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 773,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 890,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 117,
+        "vusers.created_by_name.Health Check": 110,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 110
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281620020,
+      "lastCounterAt": 1760281629994,
+      "firstMetricAt": 1760281620020,
+      "lastMetricAt": 1760281629994,
+      "period": "1760281620000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 936,
+        "vusers.created": 1186,
+        "http.requests": 1186,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1063,
+        "errors.ECONNREFUSED": 1186,
+        "vusers.failed": 1186,
+        "vusers.created_by_name.Batch Transfer": 127,
+        "vusers.created_by_name.Health Check": 123,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 123
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281630020,
+      "lastCounterAt": 1760281639995,
+      "firstMetricAt": 1760281630020,
+      "lastMetricAt": 1760281639995,
+      "period": "1760281630000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 776,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 879,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 103,
+        "vusers.created_by_name.Health Check": 121,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 121
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281640021,
+      "lastCounterAt": 1760281649995,
+      "firstMetricAt": 1760281640021,
+      "lastMetricAt": 1760281649995,
+      "period": "1760281640000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 795,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 901,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 99,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 99,
+        "vusers.created_by_name.Batch Transfer": 106
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281650021,
+      "lastCounterAt": 1760281659997,
+      "firstMetricAt": 1760281650021,
+      "lastMetricAt": 1760281659997,
+      "period": "1760281650000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 940,
+        "vusers.created": 1193,
+        "http.requests": 1193,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1071,
+        "errors.ECONNREFUSED": 1193,
+        "vusers.failed": 1193,
+        "vusers.created_by_name.Batch Transfer": 131,
+        "vusers.created_by_name.Health Check": 122,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 122
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281660021,
+      "lastCounterAt": 1760281669979,
+      "firstMetricAt": 1760281660021,
+      "lastMetricAt": 1760281669979,
+      "period": "1760281660000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Batch Transfer": 114,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 902,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 98,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 98,
+        "vusers.created_by_name.Send FT Token": 788
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281670002,
+      "lastCounterAt": 1760281679978,
+      "firstMetricAt": 1760281670002,
+      "lastMetricAt": 1760281679978,
+      "period": "1760281670000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 801,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 891,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 90,
+        "vusers.created_by_name.Health Check": 109,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 109
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281680002,
+      "lastCounterAt": 1760281689978,
+      "firstMetricAt": 1760281680002,
+      "lastMetricAt": 1760281689978,
+      "period": "1760281680000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 954,
+        "vusers.created": 1194,
+        "http.requests": 1194,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1071,
+        "errors.ECONNREFUSED": 1194,
+        "vusers.failed": 1194,
+        "vusers.created_by_name.Health Check": 123,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 123,
+        "vusers.created_by_name.Batch Transfer": 117
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281690001,
+      "lastCounterAt": 1760281699994,
+      "firstMetricAt": 1760281690001,
+      "lastMetricAt": 1760281699994,
+      "period": "1760281690000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 803,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 898,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 95,
+        "vusers.created_by_name.Health Check": 102,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 102
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281700005,
+      "lastCounterAt": 1760281709994,
+      "firstMetricAt": 1760281700005,
+      "lastMetricAt": 1760281709994,
+      "period": "1760281700000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 821,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 905,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 95,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 95,
+        "vusers.created_by_name.Batch Transfer": 84
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281710005,
+      "lastCounterAt": 1760281719994,
+      "firstMetricAt": 1760281710005,
+      "lastMetricAt": 1760281719994,
+      "period": "1760281710000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Health Check": 120,
+        "vusers.created": 1189,
+        "http.requests": 1189,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 120,
+        "errors.ECONNREFUSED": 1189,
+        "vusers.failed": 1189,
+        "vusers.created_by_name.Send FT Token": 975,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 1069,
+        "vusers.created_by_name.Batch Transfer": 94
+      },
+      "rates": {
+        "http.request_rate": 121
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281720005,
+      "lastCounterAt": 1760281729995,
+      "firstMetricAt": 1760281720005,
+      "lastMetricAt": 1760281729995,
+      "period": "1760281720000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 783,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 907,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 124,
+        "vusers.created_by_name.Health Check": 93,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 93
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281730005,
+      "lastCounterAt": 1760281739995,
+      "firstMetricAt": 1760281730005,
+      "lastMetricAt": 1760281739995,
+      "period": "1760281730000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 791,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 909,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Batch Transfer": 118,
+        "vusers.created_by_name.Health Check": 91,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 91
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281740005,
+      "lastCounterAt": 1760281749995,
+      "firstMetricAt": 1760281740005,
+      "lastMetricAt": 1760281749995,
+      "period": "1760281740000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 825,
+        "vusers.created": 1000,
+        "http.requests": 1000,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 920,
+        "errors.ECONNREFUSED": 1000,
+        "vusers.failed": 1000,
+        "vusers.created_by_name.Health Check": 80,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 80,
+        "vusers.created_by_name.Batch Transfer": 95
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281750004,
+      "lastCounterAt": 1760281759995,
+      "firstMetricAt": 1760281750004,
+      "lastMetricAt": 1760281759995,
+      "period": "1760281750000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 847,
+        "vusers.created": 1052,
+        "http.requests": 1052,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 954,
+        "errors.ECONNREFUSED": 1053,
+        "vusers.failed": 1053,
+        "vusers.created_by_name.Batch Transfer": 106,
+        "vusers.created_by_name.Health Check": 99,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 99
+      },
+      "rates": {
+        "http.request_rate": 107
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281760004,
+      "lastCounterAt": 1760281769999,
+      "firstMetricAt": 1760281760004,
+      "lastMetricAt": 1760281769999,
+      "period": "1760281760000",
+      "summaries": {},
+      "histograms": {}
+    },
+    {
+      "counters": {
+        "vusers.created_by_name.Send FT Token": 504,
+        "vusers.created": 635,
+        "http.requests": 635,
+        "plugins.metrics-by-endpoint./send-ft.errors.ECONNREFUSED": 571,
+        "errors.ECONNREFUSED": 635,
+        "vusers.failed": 635,
+        "vusers.created_by_name.Batch Transfer": 67,
+        "vusers.created_by_name.Health Check": 64,
+        "plugins.metrics-by-endpoint./health.errors.ECONNREFUSED": 64
+      },
+      "rates": {
+        "http.request_rate": 100
+      },
+      "http.request_rate": null,
+      "firstCounterAt": 1760281770009,
+      "lastCounterAt": 1760281776485,
+      "firstMetricAt": 1760281770009,
+      "lastMetricAt": 1760281776485,
+      "period": "1760281770000",
+      "summaries": {},
+      "histograms": {}
+    }
+  ]
+}

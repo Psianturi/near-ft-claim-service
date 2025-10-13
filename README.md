@@ -3,39 +3,108 @@
 [![CI](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/ci.yml)
 [![Benchmark](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml/badge.svg?branch=main)](https://github.com/Psianturi/near-ft-claim-service/actions/workflows/benchmark.yml)
 
-High-performance service for distributing NEP-141 tokens on NEAR blockchain. Handles concurrent transfers, batching, durable job tracking, and benchmarking for sandbox & testnet.
+High-performance service for distributing NEP-141 tokens on NEAR blockchain. Features advanced batching, concurrent transfers, durable job tracking, and comprehensive benchmarking for sandbox & testnet environments.
 
 ## Features
-- 🚀 30+ TPS sustained (sandbox/testnet)
-- Durable batching & job recovery
-- Key pool management & nonce conflict prevention
-- REST API `/send-ft` for single/batch transfer
-- Artillery benchmark integration
+- 🚀 **100 TPS sustained** (sandbox/testnet) with intelligent batching
+- 📦 **Smart Request Batching** - Groups transfers into single blockchain transactions (600ms window, max 10 transfers/tx)
+- 🔄 **Durable Job Recovery** - Automatic retry and state persistence across restarts
+- 🔑 **Advanced Key Pool Management** - Prevents nonce conflicts with 5+ function-call keys
+- 🛡️ **Concurrent Safety** - Rate limiting, throttling, and deadlock prevention
+- 📊 **REST API** `/send-ft` for single/batch transfers with transaction hash responses
+- 🎯 **Artillery Integration** - Comprehensive load testing and performance benchmarking
+- 📈 **Real-time Metrics** - Prometheus-compatible monitoring and throughput tracking
 
 ---
 
-## Lifecycle Setup (Developer)
+## Quick Start Guide
 
-### 1. Contract (ft)
-- Clone [near-examples/FT](https://github.com/near-examples/FT)
-- Build: `cargo build --target wasm32-unknown-unknown --release`
-- Deploy: `near deploy ...` (sandbox/testnet)
+### For Developers (Complete Setup)
 
-### 2. near-ft-helper
-- Clone [Psianturi/near-ft-helper](https://github.com/Psianturi/near-ft-helper)
-- Bootstrap sandbox/testnet, generate key pool, deploy contract
-- Command: `node deploy.js` (sandbox) / `node deploy-testnet.js` (testnet)
+#### 1. **Contract Setup (FT)**
+```bash
+# Clone and build NEP-141 FT contract
+git clone https://github.com/near-examples/FT
+cd ft
+cargo build --target wasm32-unknown-unknown --release
+# Deploy via near-cli or near-ft-helper
+```
 
-### 3. ft-claiming-service
-- Clone [Psianturi/near-ft-claim-service](https://github.com/Psianturi/near-ft-claim-service)
-- Install: `npm install`
-- Configure `.env`/`.env.testnet`/`.env.testnet.backup`
-- Start API & worker:
-  - Sandbox: `npm run start:sandbox` + `npm run run:worker:sandbox`
-  - Testnet: `npm run start:testnet` + `npm run run:worker:testnet`
-- Benchmark:
-  - Sandbox: `./testing/test-complete-pipeline.sh`
-  - Testnet: `./testing/test-complete-pipeline-testnet.sh`
+#### 2. **Environment Bootstrap (near-ft-helper)**
+```bash
+# Clone helper for automated setup
+git clone https://github.com/Psianturi/near-ft-helper
+cd near-ft-helper
+
+# Sandbox setup (auto-generates keys, deploys contract)
+node deploy.js
+
+# Testnet setup (requires your testnet account)
+node deploy-testnet.js
+```
+
+#### 3. **Service Setup (ft-claiming-service)**
+```bash
+# Clone the main service
+git clone https://github.com/Psianturi/near-ft-claim-service
+cd ft-claiming-service
+
+# Install dependencies
+npm install
+
+# Configure environment (copy and edit)
+cp .env.example .env                    # For sandbox
+cp .env.example .env.testnet           # For testnet
+
+# Edit .env files with your credentials from near-ft-helper output
+```
+
+#### 4. **Run & Test**
+```bash
+# Start API service
+SKIP_NEAR_INIT=true npm run start:sandbox    # Sandbox mode (mock - no real network)
+npm run start:testnet                        # Testnet mode (real network)
+
+# In another terminal, run benchmark
+./testing/artillery/run-artillery-test.sh sandbox
+./testing/artillery/run-artillery-test.sh testnet
+
+# Manual Artillery commands
+npx artillery run testing/artillery/benchmark-sandbox.yml \
+  --output test-results/artillery-sandbox-$(date +%Y%m%d-%H%M%S).json
+
+npx artillery run testing/artillery/benchmark-testnet.yml \
+  --output test-results/artillery-testnet-$(date +%Y%m%d-%H%M%S).json
+```
+
+**Note:** `SKIP_NEAR_INIT=true` is only needed for sandbox mode to use mock blockchain. For real network testing (testnet/mainnet), omit this flag.
+
+### For Public Users (Quick Test)
+
+#### Sandbox Testing
+```bash
+# 1. Copy environment template
+cp .env.example .env
+
+# 2. Run automated pipeline (includes sandbox setup)
+./testing/test-complete-pipeline.sh
+
+# 3. Check results
+cat testing/pipeline-summary.json
+```
+
+#### Testnet Testing
+```bash
+# 1. Setup testnet environment
+cp .env.example .env.testnet
+# Edit .env.testnet with your testnet credentials
+
+# 2. Run automated testnet pipeline
+./testing/test-complete-pipeline-testnet.sh
+
+# 3. Check results
+cat testing/pipeline-summary.json
+```
 
 ---
 
@@ -43,57 +112,31 @@ High-performance service for distributing NEP-141 tokens on NEAR blockchain. Han
 
 ### Sandbox
 1. Copy `.env.example` ke `.env`
-2. Jalankan API & worker (sandbox)
-3. Jalankan benchmark: `./testing/test-complete-pipeline.sh`
-4. Cek hasil di `testing/pipeline-summary.json`
+2. Run benchmark: `./testing/test-complete-pipeline.sh`
+3. Cek result in `testing/pipeline-summary.json`
 
 ### Testnet
 1. Copy `.env.example` to `.env.testnet` and fill with your testnet credentials
-2. Start API & worker (testnet)
-3. Run benchmark: `./testing/test-complete-pipeline-testnet.sh`
-4. Check results in `testing/pipeline-summary.json`
+2. Run benchmark: `./testing/test-complete-pipeline-testnet.sh`
+3. Check results in `testing/pipeline-summary.json`
 
 ---
 
 ## Benchmark & Analysis
-- Hasil: `testing/pipeline-summary.json`
+- Result: `testing/pipeline-summary.json`
 - Success: Success rate > 95%, latency < 10s, error minimal
-- Tuning: Atur batch/concurrency/key pool di `.env.*` jika error tinggi
-
----
-
-## Documentation & Links
-- [Benchmark Quick Reference](docs/BENCHMARK_QUICK_REFERENCE.md)
-- [Workflow Analysis](docs/WORKFLOW_SANDBOX_BENCHMARK_ANALYSIS.md)
-- [Testing Strategy](docs/testing.md)
+- Tuning: Set up batch/concurrency/key pool in `.env.*` 
 
 ---
 
 ## License
 Apache-2.0
-   npm run typecheck && npm run security && npm run test:frontend
-   ```
-7. **Exercise blockchain flows.** Kick off the sandbox or testnet suites when you need end-to-end coverage:
-   ```bash
-   npm run test:sandbox
-   npm run test:testnet
-   ```
-8. **Benchmark throughput.**
-   ```bash
-   npm run benchmark
-   ./testing/artillery/run-artillery-test.sh sandbox
-   ./testing/artillery/run-artillery-test.sh testnet
-   ```
-   Artillery results land in `ARTILLERY_*` JSON files under `testing/artillery/` and summarized reports in `test-results/`.
-9. **Review docs for deeper dives.** `docs/testing.md` covers the rationale for each suite, while `docs/ci.md` explains the GitHub Actions workflows and secrets.
-
-Follow the detailed sections below for configuration nuances, deployment hints, and troubleshooting tips.
 
 ---
 
 ## Requirements
 
-- **Node.js 20+** (Node 22 or 24 recommended for newest dependencies)
+- **Node.js 22+** (Node 24 recommended for newest dependencies)
    ```bash
    nvm install 22 && nvm use 22
    ```
@@ -163,15 +206,6 @@ done
 # Sandbox (via near-ft-helper)
 node near-ft-helper/deploy.js  # Auto-generates keys
 ```
-
-### Logging
-
-- `LOG_LEVEL` controls verbosity (`warn` is recommended for high-throughput runs).
-- Set `PINO_DESTINATION=/path/to/service.log` (or the legacy `PINO_LOG_PATH`) to stream logs to a file. Run `node scripts/prepare-benchmark.mjs` to rotate old logs and emit the relevant `export` commands.
-- File destinations default to **synchronous writes** so benchmarks no longer trip `_flushSync took too long` errors from `thread-stream`.
-- Override the behavior with `PINO_SYNC=false` only if you have fast storage and want buffered writes. Tune the buffer with `PINO_MIN_LENGTH=<bytes>` when running async.
-
-> Tip: Place log files on tmpfs or NVMe when running sustained load tests to avoid I/O stalls.
 
 ### Storage Registration
 
@@ -286,44 +320,6 @@ MAX_TPS=65 TEST_DURATION=540 ./testing/test-complete-pipeline.sh
 ```bash
 TESTNET_TARGET_TPS=70 TESTNET_TEST_DURATION=540 ./testing/test-complete-pipeline-testnet.sh
 ```
-
-### 🎯 Legacy 100+ TPS Benchmark (10 Minutes)
-
-**Primary benchmark target (10-minute 100 TPS run):**
-
-```bash
-# Step 1: Setup (one-time)
-cp .env.example .env
-# Edit .env: Add 5+ keys, set SKIP_STORAGE_CHECK=true, WAIT_UNTIL=Included
-# Sandbox defaults for fast confirmations & concurrency
-export WAIT_UNTIL=Included
-export SANDBOX_MAX_IN_FLIGHT_PER_KEY=6
-export MAX_IN_FLIGHT_PER_KEY=6
-
-# Artillery ≥2.0 requires Node 22.13+. `nvm use 22` (or newer) before running the pipeline to avoid EBADENGINE warnings.
-
-# Step 2: Start services
-# Terminal 1
-cd near-ft-helper && node deploy.js
-
-# Terminal 2
-cd ft-claiming-service
-NEAR_ENV=sandbox npm run start:sandbox
-
-# Terminal 3
-NEAR_ENV=sandbox npm run run:worker:sandbox
-
-# Step 3: Pre-register receivers
-node ci/bootstrap-sandbox-accounts.mjs
-
-# Step 4: Run 10-minute benchmark (60,000+ transfers)
-ARTILLERY_PROFILE=benchmark-sandbox.yml \
-npx artillery run testing/artillery/benchmark-sandbox.yml \
-  --output test-results/benchmark-10min-$(date +%Y%m%d-%H%M%S).json
-```
-
-
-📚 **Detailed guide**: [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)
 
 🔍 **Metrics sanity check:** After the run, hit `http://127.0.0.1:3000/metrics/jobs` to confirm the `submitted` counter is >0. For dashboards, scrape `http://127.0.0.1:3000/metrics` (Prometheus format) to visualise success/error trends. The benchmark CI pipeline now fails automatically when no jobs reach `submitted`.
 

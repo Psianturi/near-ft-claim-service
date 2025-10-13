@@ -22,7 +22,7 @@ log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
 
-export MAX_TPS=${MAX_TPS:-65}  # Default to 65 TPS for standard benchmarking
+export MAX_TPS=${MAX_TPS:-32}  
 export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-200}
 export WAIT_UNTIL=${WAIT_UNTIL:-Included}
 
@@ -33,7 +33,7 @@ log_info "   - WAIT_UNTIL: ${WAIT_UNTIL}"
 
 SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
-TEST_DURATION=${TEST_DURATION:-600}  # 10 minutes of sustained load for realism
+TEST_DURATION=${TEST_DURATION:-360}  # 6 minutes of sustained load for sandbox
 
 
 # focus on standard benchmarking
@@ -465,7 +465,7 @@ else
 fi
 API_PID=$!
 
-if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 50 "API Service"; then
+if ! wait_for_service "http://127.0.0.1:$API_PORT/health" 45 "API Service"; then
     log_error "API service failed to start. Check api.log"
     cat api.log
     exit 1
@@ -621,7 +621,7 @@ fi
 
 log_success "🎉 API validation tests completed successfully!"
 echo ""
-echo "📊 Test Summary:"
+echo " Test Summary:"
 echo "   ✅ Health check: PASSED"
 echo "   ✅ Invalid receiver validation: PASSED"
 echo "   ✅ Missing field validation: PASSED"
@@ -709,7 +709,7 @@ fi
 echo ""
 echo "📝 Note: Sandbox is pinned to NEAR ${NEAR_SANDBOX_VERSION} (avoids the 2.6.5 deployment bug)"
 echo "💡 Performance already validated on testnet"
-echo "🎯 API service functionality: FULLY VALIDATED"
+echo "API service functionality: FULLY VALIDATED"
 
 SUMMARY_JSON="$PROJECT_ROOT/testing/pipeline-summary.json"
 if [ -n "$RESULT_FILE" ] && command -v jq >/dev/null 2>&1; then

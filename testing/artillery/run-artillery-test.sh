@@ -61,12 +61,20 @@ echo "✅ API service is running at ${TARGET_URL}"
 
 if [ "$ENVIRONMENT" = "sandbox" ]; then
   SANDBOX_RPC_STATUS_URL="${SANDBOX_RPC_STATUS_URL:-${NODE_URL%/}/status}"
-  if ! curl -sS "$SANDBOX_RPC_STATUS_URL" >/dev/null 2>&1; then
-    echo "❌ NEAR sandbox RPC not responding at ${SANDBOX_RPC_STATUS_URL}"
-    echo "💡 Start the sandbox first (e.g. ./testing/test-complete-pipeline.sh or npx near-sandbox run)"
-    exit 1
+
+  # Check if SKIP_NEAR_INIT is set (mock mode)
+  if [ "${SKIP_NEAR_INIT:-false}" = "true" ]; then
+    echo "⚠️  SKIP_NEAR_INIT=true detected - skipping sandbox RPC check (mock mode)"
+    echo "📝 This will test API and batching logic without real blockchain"
+  else
+    if ! curl -sS "$SANDBOX_RPC_STATUS_URL" >/dev/null 2>&1; then
+      echo "❌ NEAR sandbox RPC not responding at ${SANDBOX_RPC_STATUS_URL}"
+      echo "💡 Start the sandbox first (e.g. ./testing/test-complete-pipeline.sh or npx near-sandbox run)"
+      echo "💡 Or use SKIP_NEAR_INIT=true for mock testing: SKIP_NEAR_INIT=true ./testing/artillery/run-artillery-test.sh sandbox"
+      exit 1
+    fi
+    echo "✅ Sandbox RPC is responding at ${SANDBOX_RPC_STATUS_URL}"
   fi
-  echo "✅ Sandbox RPC is responding at ${SANDBOX_RPC_STATUS_URL}"
 fi
 
 # Prepare Artillery configuration (allows override via ARTILLERY_CONFIG env)

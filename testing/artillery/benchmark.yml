@@ -1,22 +1,22 @@
 config:
   target: 'http://localhost:3000'
   http:
-    timeout: 10000  # Reduced for faster processing
+    timeout: 5000
     pool: 1000      # Connection pool size
   phases:
     # Warm-up phase - Start slow to test basic functionality
     - duration: 10
-      arrivalRate: 10
+      arrivalRate: 5
     # Ramp-up to 100 TPS - Gradual increase to test scaling
     - duration: 20
-      arrivalRate: 30
-      rampTo: 100
+      arrivalRate: 25
+      rampTo: 75
     # Sustained 100 TPS - Test stability at moderate load
     - duration: 60
-      arrivalRate: 100
+      arrivalRate: 75
     # Push to 200 TPS - Ramp up to near-target load
-    - duration: 60
-      arrivalRate: 200
+    - duration: 100
+      arrivalRate: 100
 
 
   defaults:

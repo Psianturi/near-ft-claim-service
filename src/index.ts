@@ -470,18 +470,25 @@ app.get('/metrics', async (req: Request, res: Response) => {
 });
 
 // Get batching statistics
-app.get('/metrics/batching', (req: Request, res: Response) => {
-  const batcher = require('./request-batcher.js').requestBatcher;
-  const stats = batcher.getStats();
+app.get('/metrics/batching', async (req: Request, res: Response) => {
+  try {
+    const { requestBatcher } = await import('./request-batcher.js');
+    const stats = requestBatcher.getStats();
 
-  res.send({
-    success: true,
-    batching: {
-      ...stats,
-      description: 'Request batching efficiency metrics - higher batchEfficiency indicates better throughput optimization'
-    },
-    timestamp: new Date().toISOString(),
-  });
+    res.send({
+      success: true,
+      batching: {
+        ...stats,
+        description: 'Request batching efficiency metrics - higher batchEfficiency indicates better throughput optimization'
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).send({
+      error: 'Failed to load batching metrics',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 app.post('/send-ft', async (req: Request, res: Response) => {
