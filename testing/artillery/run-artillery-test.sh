@@ -102,7 +102,7 @@ config:
     
     # Ramp-up phase
     - duration: 60
-      arrivalRate: 10
+      arrivalRate: 15
       rampTo: 50
       name: "Ramp-up"
     
@@ -112,8 +112,8 @@ config:
       name: "Peak Load"
     
     # High-load stress test
-    - duration: 60
-      arrivalRate: 150
+    - duration: 100
+      arrivalRate: 120
       rampTo: 200
       name: "Stress Test"
   

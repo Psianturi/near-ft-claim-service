@@ -75,6 +75,9 @@ npx artillery run testing/artillery/benchmark-sandbox.yml \
 
 npx artillery run testing/artillery/benchmark-testnet.yml \
   --output test-results/artillery-testnet-$(date +%Y%m%d-%H%M%S).json
+
+# Run automated testnet pipeline
+./testing/test-complete-pipeline-testnet.sh
 ```
 
 **Note:** `SKIP_NEAR_INIT=true` is only needed for sandbox mode to use mock blockchain. For real network testing (testnet/mainnet), omit this flag.
@@ -129,11 +132,6 @@ cat testing/pipeline-summary.json
 
 ---
 
-## License
-Apache-2.0
-
----
-
 ## Requirements
 
 - **Node.js 22+** (Node 24 recommended for newest dependencies)
@@ -155,39 +153,6 @@ npx playwright install --with-deps
 ```
 
 ---
-
-## Configuration
-
-### Quick Start
-
-1. **Copy environment template:**
-   ```bash
-   # For sandbox
-   cp .env.example .env
-   
-   # For testnet
-   cp .env.example .env.testnet
-   ```
-
-2. **Configure credentials:**
-   ```env
-   MASTER_ACCOUNT=your-account.testnet
-   MASTER_ACCOUNT_PRIVATE_KEYS=key1,key2,key3,key4,key5  # 5+ keys for 100 TPS
-   FT_CONTRACT=your-ft-contract.testnet
-   ```
-
-3. **Optimize for 100+ TPS:**
-   ```env
-   # Throughput settings
-   MAX_TX_PER_SECOND=150              # 30% margin above target
-   MAX_TX_PER_KEY_PER_SECOND=30       # 30 TPS per key
-   SANDBOX_MAX_IN_FLIGHT_PER_KEY=8    # Concurrent tx per key
-   
-   # Performance optimizations
-   SKIP_STORAGE_CHECK=true            # Pre-register receivers
-   WAIT_UNTIL=Included                # Fastest finality (WAIT_UNTIL=None is no longer supported)
-   CONCURRENCY_LIMIT=600              # High concurrency
-   ```
 
 ### Key Pool Configuration
 
@@ -433,11 +398,3 @@ ENABLE_MEMORY_MONITORING=true  # Memory tracking
 │   └── examples/             # Demo frontend
 ```
 
-## Documentation
-
-- **[Performance Optimization Guide](docs/PERFORMANCE_OPTIMIZATION.md)** - Achieving 100+ TPS
-- **[Testing Guide](docs/testing.md)** - Test strategy and best practices
-- **[CI/CD Guide](docs/ci.md)** - GitHub Actions workflows
-- **[API Documentation](docs/api.md)** - REST API reference (TODO)
-- **[NEAR FT Reference Implementation](https://github.com/near-examples/FT)** - Canonical NEP-141 contract spec
-- **[near-ft-helper Sandbox Toolkit](https://github.com/Psianturi/near-ft-helper)** - Helper scripts for provisioning sandbox accounts and keys

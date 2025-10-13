@@ -1,32 +1,30 @@
 config:
   target: 'http://127.0.0.1:3000'
   http:
-    timeout: 115          
-    pool: 200            
-    maxSockets: 600      
+    timeout: 115
+    pool: 200
+    maxSockets: 600
   phases:
-    # EXACTLY 10 MINUTES TOTAL (600 seconds)
-    
+
     # Quick warm-up: 30s
     - duration: 30
-      arrivalRate: 4
-      rampTo: 20
+      arrivalRate: 2
+      rampTo: 10
       name: "Warm-up (0-30s)"
-    
+
     # Ramp to target: 30s
     - duration: 30
-      arrivalRate: 20
-      rampTo: 50
-      name: "Ramp to 50 TPS (30-60s)"
-    
-    # SUSTAINED LOAD: 500 seconds @ 50 TPS
+      arrivalRate: 10
+      rampTo: 25
+      name: "Ramp to 25 TPS (30-60s)"
+
     - duration: 400
-      arrivalRate: 50
-      name: "Sustained 50 TPS"
-  
+      arrivalRate: 28
+      name: "Sustained 28 TPS"
+
   variables:
     receiverId:
-      - "posma-badge.testnet"  # Use receiver we know works!
+      - "posma-badge.testnet,near-badge.testnet"  # Use receiver we know works!
     
     amount:
       - "1000000000000000000000000"   # 1 token

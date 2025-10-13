@@ -22,7 +22,7 @@ log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
 
-export MAX_TPS=${MAX_TPS:-32}  
+export MAX_TPS=${MAX_TPS:-34}  
 export MAX_PENDING_JOBS=${MAX_PENDING_JOBS:-200}
 export WAIT_UNTIL=${WAIT_UNTIL:-Included}
 
@@ -33,7 +33,7 @@ log_info "   - WAIT_UNTIL: ${WAIT_UNTIL}"
 
 SANDBOX_PORT=${SANDBOX_PORT:-3030}
 API_PORT=${API_PORT:-3000}
-TEST_DURATION=${TEST_DURATION:-360}  # 6 minutes of sustained load for sandbox
+TEST_DURATION=${TEST_DURATION:-400} 
 
 
 # focus on standard benchmarking
